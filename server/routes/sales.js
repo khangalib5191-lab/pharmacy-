@@ -15,23 +15,30 @@ router.post('/', verifyToken, async (req, res) => {
 
     // Pre-validate stock for all items
     for (const item of items) {
+      const qty = parseFloat(item.quantity);
+      if (isNaN(qty) || qty <= 0) {
+        return res.status(400).json({ success: false, message: `Invalid quantity for item: ${item.trade_name}` });
+      }
       const med = await get('SELECT trade_name, stock_quantity, status, expiry_date FROM medicines WHERE id = ?', [item.id]);
       if (!med) return res.status(404).json({ success: false, message: `Product ID ${item.id} not found.` });
       if (med.status === 'blocked') return res.status(400).json({ success: false, message: `Product "${med.trade_name}" is blocked.` });
-      if (med.stock_quantity < item.quantity) {
-        return res.status(400).json({ success: false, message: `Insufficient stock for [${med.trade_name}]. Available: ${med.stock_quantity}` });
+      if (parseFloat(med.stock_quantity) < qty) {
+        return res.status(400).json({ success: false, message: `Insufficient stock for [${med.trade_name}]. Available: ${med.stock_quantity}, Requested: ${qty}` });
       }
       if (med.expiry_date && new Date(med.expiry_date) < new Date()) {
         return res.status(400).json({ success: false, message: `"${med.trade_name}" is expired (${med.expiry_date}). Cannot sell expired products.` });
       }
     }
 
-    // Compute totals
+    // Compute totals with floating-point precision
     let subtotal = 0;
     let cost_total = 0;
     for (const item of items) {
-      subtotal += (item.selling_price || item.unit_price) * item.quantity;
-      cost_total += (item.cost_price || 0) * item.quantity;
+      const qty = parseFloat(item.quantity);
+      const unitPrice = parseFloat(item.selling_price || item.unit_price || 0);
+      const costPrice = parseFloat(item.cost_price || 0);
+      subtotal += unitPrice * qty;
+      cost_total += costPrice * qty;
     }
 
     const totalDiscount = parseFloat(discount || 0);
@@ -52,34 +59,48 @@ router.post('/', verifyToken, async (req, res) => {
 
       const processedItems = [];
       for (const item of items) {
+        const qty = parseFloat(item.quantity);
         const med = await get('SELECT cost_price, stock_quantity FROM medicines WHERE id = ?', [item.id]);
-        const unit_cost = item.cost_price || med.cost_price;
-        const itemTotal = (item.selling_price || item.unit_price) * item.quantity;
+        const unit_cost = parseFloat(item.cost_price || med.cost_price || 0);
+        const unitPrice = parseFloat(item.selling_price || item.unit_price || 0);
+        const itemTotal = unitPrice * qty;
 
-        // 2. Insert sale item with cost snapshot
+        // 2. Insert sale item with cost snapshot and float quantity
         await run(
           `INSERT INTO sale_items (sale_id, medicine_id, trade_name, dosage, quantity, unit_price, cost_price, discount, total_price)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [sale_id, item.id, item.trade_name, item.dosage || null, item.quantity,
-           item.selling_price || item.unit_price, unit_cost, item.discount || 0, itemTotal]
+          [sale_id, item.id, item.trade_name, item.dosage || null, qty,
+           unitPrice, unit_cost, parseFloat(item.discount || 0), itemTotal]
         );
 
         // 3. Deduct stock
-        const stockBefore = med.stock_quantity;
-        await run(`UPDATE medicines SET stock_quantity = stock_quantity - ? WHERE id = ?`, [item.quantity, item.id]);
-        const stockAfter = stockBefore - item.quantity;
+        const stockBefore = parseFloat(med.stock_quantity || 0);
+        await run(`UPDATE medicines SET stock_quantity = stock_quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [qty, item.id]);
+        const stockAfter = stockBefore - qty;
 
         // 4. Record inventory movement
         await run(
           `INSERT INTO inventory_movements (medicine_id, movement_type, quantity_out, stock_before, stock_after, reference_type, reference_id, reference_number, unit_cost, created_by)
            VALUES (?, 'sale', ?, ?, ?, 'sale', ?, ?, ?, ?)`,
-          [item.id, item.quantity, stockBefore, stockAfter, sale_id, receipt_number, unit_cost, req.user.id]
+          [item.id, qty, stockBefore, stockAfter, sale_id, receipt_number, unit_cost, req.user.id]
         );
 
-        processedItems.push({ trade_name: item.trade_name, dosage: item.dosage, quantity: item.quantity, unit_price: item.selling_price || item.unit_price, total_price: itemTotal });
+        processedItems.push({ trade_name: item.trade_name, dosage: item.dosage, quantity: qty, unit_price: unitPrice, total_price: itemTotal });
       }
 
-      // 5. Update shift if active
+      // 5. Customer Ledger Entry if Credit payment
+      if (customer_id && payment_method === 'Credit') {
+        const lastEntry = await get(`SELECT balance FROM customer_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 1`, [customer_id]);
+        const prevBal = lastEntry ? parseFloat(lastEntry.balance) : 0;
+        const newBal = prevBal + total_amount;
+        await run(
+          `INSERT INTO customer_ledger (customer_id, transaction_type, debit, balance, reference_type, reference_id, reference_number, notes, created_by)
+           VALUES (?, 'sale', ?, ?, 'sale', ?, ?, ?, ?)`,
+          [customer_id, total_amount, newBal, sale_id, receipt_number, `Credit Sale ${receipt_number}`, req.user.id]
+        );
+      }
+
+      // 6. Update shift if active
       if (shift_id) {
         await run(
           `UPDATE cashier_shifts SET total_sales = total_sales + ?, transaction_count = transaction_count + 1,

@@ -8,6 +8,17 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
     window.print();
   };
 
+  const formatQty = (qty) => {
+    const num = parseFloat(qty);
+    if (isNaN(num)) return qty;
+    if (Math.abs(num - 0.5) < 0.001) return '½ (0.5)';
+    if (Math.abs(num - 0.333) < 0.01) return '⅓ (0.33)';
+    if (Math.abs(num - 0.25) < 0.001) return '¼ (0.25)';
+    if (Math.abs(num - 0.2) < 0.001) return '⅕ (0.2)';
+    if (Math.abs(num - 0.166) < 0.01) return '⅙ (0.17)';
+    return Number.isInteger(num) ? num.toString() : num.toFixed(2);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
       <div className="bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
@@ -29,9 +40,9 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
         {/* Printable Receipt Content */}
         <div className="p-6 overflow-y-auto" id="printable-receipt">
           <div className="text-center pb-4 border-b border-slate-700/60">
-            <h2 className="text-xl font-bold tracking-tight text-white">PHARMACONNECT PHARMACY</h2>
-            <p className="text-xs text-slate-400">123 Health Care Boulevard, City Medical Center</p>
-            <p className="text-xs text-slate-400">Tel: +1 (800) 555-MEDS | LAN POS System</p>
+            <h2 className="text-xl font-bold tracking-tight text-white uppercase">PharmaConnect Pharmacy</h2>
+            <p className="text-xs text-slate-400">123 Health Care Boulevard, Main Market</p>
+            <p className="text-xs text-slate-400">Tel: +92-300-0000000 | Pharmacy POS</p>
           </div>
 
           {/* Receipt Info */}
@@ -73,12 +84,12 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
                 {receipt.items.map((item, idx) => (
                   <tr key={idx}>
                     <td className="py-1.5 font-medium">
-                      {item.trade_name} <span className="text-[10px] text-slate-400">({item.dosage})</span>
+                      {item.trade_name} <span className="text-[10px] text-slate-400">({item.dosage || ''})</span>
                     </td>
-                    <td className="py-1.5 text-center font-semibold">{item.quantity}</td>
-                    <td className="py-1.5 text-right font-mono">${item.unit_price.toFixed(2)}</td>
+                    <td className="py-1.5 text-center font-semibold text-emerald-400">{formatQty(item.quantity)}</td>
+                    <td className="py-1.5 text-right font-mono">Rs. {parseFloat(item.unit_price || 0).toFixed(2)}</td>
                     <td className="py-1.5 text-right font-mono font-semibold text-emerald-400">
-                      ${item.total_price.toFixed(2)}
+                      Rs. {parseFloat(item.total_price || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -90,45 +101,41 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
           <div className="pt-3 space-y-1.5 text-xs text-slate-300">
             <div className="flex justify-between">
               <span className="text-slate-400">Subtotal:</span>
-              <span className="font-mono">${receipt.subtotal.toFixed(2)}</span>
+              <span className="font-mono">Rs. {parseFloat(receipt.subtotal || 0).toFixed(2)}</span>
             </div>
             {receipt.discount > 0 && (
               <div className="flex justify-between text-rose-400">
                 <span>Discount Applied:</span>
-                <span className="font-mono">-${receipt.discount.toFixed(2)}</span>
+                <span className="font-mono">-Rs. {parseFloat(receipt.discount || 0).toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between text-base font-bold text-white pt-2 border-t border-slate-700">
+            <div className="flex justify-between pt-2 border-t border-slate-700/60 text-base font-bold text-white">
               <span>Grand Total:</span>
-              <span className="font-mono text-emerald-400">${receipt.total_amount.toFixed(2)}</span>
+              <span className="text-emerald-400 font-mono">Rs. {parseFloat(receipt.total_amount || 0).toFixed(2)}</span>
             </div>
           </div>
 
-          {/* Footer message */}
-          <div className="text-center pt-6 text-[11px] text-slate-400 font-medium">
-            <p>Thank you for trusting PharmaConnect!</p>
-            <p>Get well soon!</p>
+          {/* Footer Note */}
+          <div className="pt-4 text-center text-[10px] text-slate-500 border-t border-slate-800 mt-4">
+            <p>Thank you for choosing PharmaConnect Pharmacy!</p>
+            <p>Medicines once sold cannot be returned without original receipt.</p>
           </div>
         </div>
 
-        {/* Modal Controls (No print) */}
-        <div className="no-print p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3">
+        {/* Action Buttons (No print) */}
+        <div className="no-print p-4 bg-slate-900 border-t border-slate-800 flex gap-3">
           <button
             onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-sm shadow-lg shadow-teal-600/30 transition-all"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm transition shadow-sm border border-slate-700"
           >
-            <Printer className="w-4 h-4" />
+            <Printer className="w-4 h-4 text-teal-400" />
             <span>Print Receipt</span>
           </button>
-          
           <button
-            onClick={() => {
-              onClose();
-              if (onNewSale) onNewSale();
-            }}
-            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm transition-all"
+            onClick={onNewSale}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-white font-medium text-sm transition shadow-lg shadow-teal-500/20"
           >
-            New Sale
+            <span>Next Customer</span>
           </button>
         </div>
 

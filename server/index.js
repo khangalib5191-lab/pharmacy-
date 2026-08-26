@@ -15,6 +15,10 @@ import purchaseReturnsRoutes from './routes/purchase_returns.js';
 import salesReturnsRoutes from './routes/sales_returns.js';
 import inventoryRoutes from './routes/inventory.js';
 import customersRoutes from './routes/customers.js';
+import reportsRoutes from './routes/reports.js';
+import shiftsRoutes from './routes/shifts.js';
+import settingsRoutes from './routes/settings.js';
+import backupRoutes from './routes/backup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +42,10 @@ app.use('/api/purchase-returns', purchaseReturnsRoutes);
 app.use('/api/sales-returns', salesReturnsRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/customers', customersRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/shifts', shiftsRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Health Check API
 app.get('/api/health', (req, res) => {
