@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { Lock, X, KeyRound, Eye, EyeOff, Smartphone, ShieldCheck } from 'lucide-react';
 
@@ -114,10 +115,10 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[99999] grid place-items-center p-4 sm:p-6 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
-      {/* Centered Modal Card Container */}
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl animate-fade-in">
+  const modalContent = (
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+      {/* Centered Modal Card */}
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-700/90 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl animate-fade-in my-auto">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -319,4 +320,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

@@ -24,11 +24,11 @@ router.post('/open', verifyToken, async (req, res) => {
     
     // Check if already open
     const existing = await get(
-      `SELECT id FROM cashier_shifts WHERE cashier_id = ? AND status = 'open'`,
+      `SELECT * FROM cashier_shifts WHERE cashier_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`,
       [req.user.id]
     );
     if (existing) {
-      return res.status(400).json({ success: false, message: 'You already have an open shift.' });
+      return res.status(400).json({ success: false, message: `You already have open Shift #${existing.id}. Close it before opening a new one.`, shift: existing });
     }
 
     const result = await run(
@@ -40,11 +40,11 @@ router.post('/open', verifyToken, async (req, res) => {
     await logAudit({
       userId: req.user.id, username: req.user.username, action: 'OPEN_SHIFT',
       entityType: 'shift', entityId: result.id,
-      description: `Shift opened with float: Rs. ${opening_cash}`, req
+      description: `Shift #${result.id} opened with float: Rs. ${opening_cash}`, req
     });
 
     const shift = await get(`SELECT * FROM cashier_shifts WHERE id = ?`, [result.id]);
-    return res.status(201).json({ success: true, message: 'Shift opened successfully.', shift });
+    return res.status(201).json({ success: true, message: `Shift #${result.id} opened successfully with float Rs. ${opening_cash}`, shift });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Failed to open shift.' });
   }
@@ -54,12 +54,20 @@ router.post('/open', verifyToken, async (req, res) => {
 router.post('/close', verifyToken, async (req, res) => {
   try {
     const { shift_id, actual_cash, notes } = req.body;
-    const shift = await get(`SELECT * FROM cashier_shifts WHERE id = ? AND status = 'open'`, [shift_id]);
-    if (!shift) return res.status(404).json({ success: false, message: 'Open shift not found.' });
+    let shift = null;
+    if (shift_id) {
+      shift = await get(`SELECT * FROM cashier_shifts WHERE id = ? AND status = 'open'`, [shift_id]);
+    }
+    if (!shift) {
+      shift = await get(`SELECT * FROM cashier_shifts WHERE cashier_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1`, [req.user.id]);
+    }
+    if (!shift) {
+      return res.status(404).json({ success: false, message: 'No active open shift found for your account.' });
+    }
 
     // Compute expected cash = opening_cash + total_cash_sales
     const expected = parseFloat(shift.opening_cash || 0) + parseFloat(shift.total_cash_sales || 0);
-    const actual = parseFloat(actual_cash || 0);
+    const actual = parseFloat(actual_cash !== undefined ? actual_cash : expected);
     const difference = actual - expected;
 
     await run(
@@ -67,23 +75,27 @@ router.post('/close', verifyToken, async (req, res) => {
         expected_cash = ?,
         actual_cash = ?,
         cash_difference = ?,
-        notes = COALESCE(notes || ' | ', '') || ?,
+        notes = CASE WHEN notes IS NULL OR notes = '' THEN ? ELSE notes || ' | ' || ? END,
         status = 'closed',
         closed_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [expected, actual, difference, notes || '', shift_id]
+      [expected, actual, difference, notes || 'Reconciled and closed', notes || 'Reconciled and closed', shift.id]
     );
 
     await logAudit({
       userId: req.user.id, username: req.user.username, action: 'CLOSE_SHIFT',
-      entityType: 'shift', entityId: shift_id,
-      description: `Shift closed. Expected: Rs. ${expected}, Actual: Rs. ${actual}, Difference: Rs. ${difference}`, req
+      entityType: 'shift', entityId: shift.id,
+      description: `Shift #${shift.id} closed. Expected: Rs. ${expected}, Actual: Rs. ${actual}, Difference: Rs. ${difference}`, req
     });
+
+    const updatedShift = await get(`SELECT * FROM cashier_shifts WHERE id = ?`, [shift.id]);
 
     return res.json({
       success: true,
-      message: 'Shift closed successfully.',
+      message: `Shift #${shift.id} closed and drawer reconciled successfully!`,
+      shift: updatedShift,
       reconciliation: {
+        shift_id: shift.id,
         opening_cash: shift.opening_cash,
         total_cash_sales: shift.total_cash_sales,
         total_card_sales: shift.total_card_sales,
@@ -95,7 +107,7 @@ router.post('/close', verifyToken, async (req, res) => {
       }
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Failed to close shift.' });
+    return res.status(500).json({ success: false, message: 'Failed to close shift: ' + err.message });
   }
 });
 

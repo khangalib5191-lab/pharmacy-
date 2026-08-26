@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Printer, CheckCircle2, X } from 'lucide-react';
 
 export default function ReceiptModal({ receipt, onClose, onNewSale }) {
@@ -19,9 +20,9 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
     return Number.isInteger(num) ? num.toString() : num.toFixed(2);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
+  const modalContent = (
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh] my-auto">
         
         {/* Header (No print) */}
         <div className="no-print p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
@@ -45,79 +46,77 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
             <p className="text-xs text-slate-400">Tel: +92-300-0000000 | Pharmacy POS</p>
           </div>
 
-          {/* Receipt Info */}
-          <div className="py-3 border-b border-slate-700/60 text-xs space-y-1 text-slate-300">
+          <div className="py-3 text-xs border-b border-slate-700/60 space-y-1 text-slate-300">
             <div className="flex justify-between">
-              <span className="text-slate-400">Receipt #:</span>
-              <span className="font-mono font-bold text-teal-300">{receipt.receipt_number}</span>
+              <span>Receipt #:</span>
+              <span className="font-mono font-bold text-white">{receipt.receipt_number}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Date & Time:</span>
-              <span>{new Date(receipt.date).toLocaleString()}</span>
+              <span>Date & Time:</span>
+              <span className="font-mono">{new Date(receipt.created_at || Date.now()).toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Cashier:</span>
-              <span>{receipt.cashier_name}</span>
+              <span>Cashier:</span>
+              <span>{receipt.cashier_name || 'Staff Cashier'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Customer:</span>
-              <span>{receipt.customer_name || 'Walk-in Customer'}</span>
+              <span>Customer:</span>
+              <span className="font-semibold text-teal-300">{receipt.customer_name || 'Walk-in Customer'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Payment Method:</span>
-              <span className="font-semibold text-sky-400">{receipt.payment_method}</span>
+              <span>Payment Method:</span>
+              <span className="font-medium text-emerald-400">{receipt.payment_method || 'Cash'}</span>
             </div>
           </div>
 
-          {/* Itemized Table */}
+          {/* Items Table */}
           <div className="py-3 border-b border-slate-700/60">
             <table className="w-full text-xs text-left">
               <thead>
-                <tr className="text-slate-400 border-b border-slate-800">
-                  <th className="pb-1">Item</th>
-                  <th className="pb-1 text-center">Qty</th>
-                  <th className="pb-1 text-right">Price</th>
-                  <th className="pb-1 text-right">Total</th>
+                <tr className="text-slate-400 font-semibold border-b border-slate-800 pb-1">
+                  <th className="py-1">Item</th>
+                  <th className="py-1 text-center">Qty</th>
+                  <th className="py-1 text-right">Price</th>
+                  <th className="py-1 text-right">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40 text-slate-200">
-                {receipt.items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td className="py-1.5 font-medium">
-                      {item.trade_name} <span className="text-[10px] text-slate-400">({item.dosage || ''})</span>
+                {receipt.items?.map((item, idx) => (
+                  <tr key={idx} className="py-1">
+                    <td className="py-1.5 pr-1">
+                      <div className="font-semibold">{item.trade_name}</div>
+                      {item.dosage && <div className="text-[10px] text-slate-400">{item.dosage}</div>}
                     </td>
-                    <td className="py-1.5 text-center font-semibold text-emerald-400">{formatQty(item.quantity)}</td>
-                    <td className="py-1.5 text-right font-mono">Rs. {parseFloat(item.unit_price || 0).toFixed(2)}</td>
-                    <td className="py-1.5 text-right font-mono font-semibold text-emerald-400">
-                      Rs. {parseFloat(item.total_price || 0).toFixed(2)}
-                    </td>
+                    <td className="py-1.5 text-center font-mono">{formatQty(item.quantity)}</td>
+                    <td className="py-1.5 text-right font-mono text-slate-400">Rs. {parseFloat(item.unit_price).toFixed(2)}</td>
+                    <td className="py-1.5 text-right font-mono font-bold text-white">Rs. {parseFloat(item.total_price).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* Subtotal & Totals */}
-          <div className="pt-3 space-y-1.5 text-xs text-slate-300">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Subtotal:</span>
-              <span className="font-mono">Rs. {parseFloat(receipt.subtotal || 0).toFixed(2)}</span>
+          {/* Totals */}
+          <div className="pt-3 space-y-1.5 text-xs">
+            <div className="flex justify-between text-slate-300">
+              <span>Subtotal:</span>
+              <span className="font-mono">Rs. {parseFloat(receipt.subtotal || receipt.total_amount).toFixed(2)}</span>
             </div>
-            {receipt.discount > 0 && (
+            {parseFloat(receipt.discount || 0) > 0 && (
               <div className="flex justify-between text-rose-400">
-                <span>Discount Applied:</span>
-                <span className="font-mono">-Rs. {parseFloat(receipt.discount || 0).toFixed(2)}</span>
+                <span>Discount:</span>
+                <span className="font-mono">-Rs. {parseFloat(receipt.discount).toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between pt-2 border-t border-slate-700/60 text-base font-bold text-white">
-              <span>Grand Total:</span>
-              <span className="text-emerald-400 font-mono">Rs. {parseFloat(receipt.total_amount || 0).toFixed(2)}</span>
+            <div className="flex justify-between text-base font-bold text-white pt-2 border-t border-slate-700">
+              <span>Net Total:</span>
+              <span className="font-mono text-emerald-400">Rs. {parseFloat(receipt.total_amount).toFixed(2)}</span>
             </div>
           </div>
 
           {/* Footer Note */}
-          <div className="pt-4 text-center text-[10px] text-slate-500 border-t border-slate-800 mt-4">
-            <p>Thank you for choosing PharmaConnect Pharmacy!</p>
+          <div className="text-center pt-5 pb-2 text-[10px] text-slate-400 border-t border-slate-800 mt-4 space-y-1">
+            <p>Thank you for choosing One Ten Pharmacy!</p>
             <p>Medicines once sold cannot be returned without original receipt.</p>
           </div>
         </div>
@@ -133,7 +132,7 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
           </button>
           <button
             onClick={onNewSale}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-white font-medium text-sm transition shadow-lg shadow-teal-500/20"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 font-bold text-sm transition shadow-lg shadow-teal-500/20"
           >
             <span>Next Customer</span>
           </button>
@@ -142,4 +141,6 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, X, Scan, Keyboard, AlertCircle } from 'lucide-react';
 
-export default function CameraScannerModal({ isOpen, onClose, onScanSuccess }) {
+export default function CameraScannerModal({ isOpen, onClose, onScan, onScanSuccess }) {
   const [manualBarcode, setManualBarcode] = useState('');
   const [error, setError] = useState('');
 
@@ -13,14 +14,16 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess }) {
       setError('Please enter a barcode number.');
       return;
     }
-    onScanSuccess(manualBarcode.trim());
+    const val = manualBarcode.trim();
+    if (onScan) onScan(val);
+    if (onScanSuccess) onScanSuccess(val);
     setManualBarcode('');
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+  const modalContent = (
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden my-auto">
         
         {/* Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -61,36 +64,28 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess }) {
                   setError('');
                 }}
                 placeholder="e.g. 8901234567890"
-                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 text-sm font-mono"
-                autoFocus
+                className="flex-1 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 font-mono"
               />
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-sm shadow-lg shadow-teal-600/30 transition-all"
+                className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition shadow-md shadow-teal-500/20"
               >
-                Scan
+                Simulate Scan
               </button>
             </form>
 
             {error && (
-              <p className="text-xs text-rose-400 flex items-center gap-1.5 mt-1">
+              <p className="text-[11px] text-rose-400 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" />
-                <span>{error}</span>
+                {error}
               </p>
             )}
           </div>
         </div>
 
-        <div className="p-4 bg-slate-950 border-t border-slate-800 text-center">
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm transition"
-          >
-            Cancel
-          </button>
-        </div>
-
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
