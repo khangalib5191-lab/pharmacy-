@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
+import { run } from '../db/database.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'pharmaconnect_super_secret_jwt_key_2026';
+export const JWT_SECRET = process.env.JWT_SECRET || 'pharmaconnect_super_secret_jwt_key_2026';
 
 export function verifyToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -24,17 +25,42 @@ export function requireAdmin(req, res, next) {
     return res.status(403).json({
       success: false,
       message: 'Access Denied: Admin privileges required for this action.',
-      redirectTo: '/pos'
     });
   }
   next();
 }
 
-export function requireEmployee(req, res, next) {
-  if (!req.user || (req.user.role !== 'EMPLOYEE' && req.user.role !== 'ADMIN')) {
-    return res.status(403).json({ success: false, message: 'Access Denied: Valid staff account required.' });
-  }
-  next();
+// Accept ADMIN or specified roles
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Not authenticated.' });
+    }
+    const allowed = ['ADMIN', ...roles];
+    if (!allowed.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Access Denied: Required role(s): ${roles.join(', ')}`,
+      });
+    }
+    next();
+  };
 }
 
-export { JWT_SECRET };
+// Log audit event (non-blocking)
+export async function logAudit({ userId, username, action, entityType, entityId, description, beforeValue, afterValue, req }) {
+  try {
+    const ip = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '') : '';
+    await run(
+      `INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, description, before_value, after_value, ip_address)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId || null, username || null, action, entityType || null, entityId || null, description || null,
+       beforeValue ? JSON.stringify(beforeValue) : null,
+       afterValue ? JSON.stringify(afterValue) : null,
+       ip]
+    );
+  } catch (err) {
+    // Audit failure should never crash the main operation
+    console.error('Audit log error:', err.message);
+  }
+}
