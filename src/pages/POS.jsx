@@ -57,8 +57,99 @@ export default function POS() {
   const [completedReceipt, setCompletedReceipt] = useState(null);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
-  // Active shift
+  // Active shift & Shift Modals
   const [activeShift, setActiveShift] = useState(null);
+  const [isOpenShiftModalOpen, setIsOpenShiftModalOpen] = useState(false);
+  const [isCloseShiftModalOpen, setIsCloseShiftModalOpen] = useState(false);
+  const [openingCashInput, setOpeningCashInput] = useState(1000);
+  const [closingCashInput, setClosingCashInput] = useState('');
+  const [shiftSummary, setShiftSummary] = useState(null);
+
+  // Quick Add Customer Modal
+  const [isQuickCustomerModalOpen, setIsQuickCustomerModalOpen] = useState(false);
+  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', credit_limit: 5000 });
+
+  const handleSaveQuickCustomer = async (e) => {
+    e.preventDefault();
+    if (!quickCustomerForm.name || !quickCustomerForm.name.trim()) {
+      showToast('Customer name is required', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...quickCustomerForm,
+          credit_limit: parseFloat(quickCustomerForm.credit_limit || 0),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Customer ${quickCustomerForm.name} created and selected!`, 'success');
+        setIsQuickCustomerModalOpen(false);
+        const newCustId = data.customerId || data.customer?.id;
+        setQuickCustomerForm({ name: '', phone: '', credit_limit: 5000 });
+        await fetchAuxData();
+        if (newCustId) {
+          setSelectedCustomerId(String(newCustId));
+          setCustomerName(quickCustomerForm.name);
+        }
+      } else {
+        showToast(data.message || 'Failed to create customer', 'error');
+      }
+    } catch (err) {
+      showToast('Error creating customer', 'error');
+    }
+  };
+
+  const handleOpenShift = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/shifts/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ opening_cash: parseFloat(openingCashInput || 0) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Cashier shift opened successfully!', 'success');
+        setIsOpenShiftModalOpen(false);
+        setActiveShift(data.shift);
+      } else {
+        showToast(data.message || 'Failed to open shift', 'error');
+      }
+    } catch (err) {
+      showToast('Error opening shift', 'error');
+    }
+  };
+
+  const handleCloseShift = async (e) => {
+    e.preventDefault();
+    if (closingCashInput === '' || parseFloat(closingCashInput) < 0) {
+      showToast('Please enter the actual counted cash in drawer', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/shifts/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ actual_cash: parseFloat(closingCashInput) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Shift closed and drawer reconciled!', 'success');
+        setIsCloseShiftModalOpen(false);
+        setShiftSummary(data.shift);
+        setActiveShift(null);
+        setClosingCashInput('');
+      } else {
+        showToast(data.message || 'Failed to close shift', 'error');
+      }
+    } catch (err) {
+      showToast('Error closing shift', 'error');
+    }
+  };
 
   // USB Barcode Buffer
   const barcodeBufferRef = useRef('');
@@ -338,7 +429,7 @@ export default function POS() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-panel p-6 rounded-3xl border border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-bold tracking-tight text-white">Point of Sale (POS)</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-white">One Ten Pharmacy POS</h2>
             <span className="px-2.5 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               Scanner Ready
@@ -353,6 +444,28 @@ export default function POS() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Shift Status Badge */}
+          {activeShift ? (
+            <div className="flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-emerald-300">Shift #{activeShift.id} (Float: Rs. {activeShift.opening_cash})</span>
+              <button
+                onClick={() => setIsCloseShiftModalOpen(true)}
+                className="text-[11px] bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 px-2 py-0.5 rounded-lg font-bold transition ml-1"
+              >
+                Close Shift
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsOpenShiftModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 text-xs font-bold transition"
+            >
+              <Banknote className="w-3.5 h-3.5" />
+              <span>Open Cashier Shift</span>
+            </button>
+          )}
+
           {parkedCarts.length > 0 && (
             <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl">
               <PauseCircle className="w-4 h-4 text-amber-400" />
@@ -368,7 +481,7 @@ export default function POS() {
 
           <button
             onClick={() => setIsCameraScannerOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-lg shadow-teal-600/20 transition"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-lg shadow-teal-600/20 transition"
           >
             <Camera className="w-4 h-4" />
             <span>Camera Scanner</span>
@@ -571,10 +684,20 @@ export default function POS() {
 
               {/* Customer Selector */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-                  <User className="w-3 h-3 text-teal-400" />
-                  Customer (Walk-in or Credit Account)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                    <User className="w-3 h-3 text-teal-400" />
+                    <span>Customer Profile (Walk-in or Credit)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickCustomerModalOpen(true)}
+                    className="text-[10px] font-bold text-teal-400 hover:text-teal-300 flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ New Customer</span>
+                  </button>
+                </div>
                 <select
                   value={selectedCustomerId}
                   onChange={handleCustomerChange}
@@ -794,6 +917,172 @@ export default function POS() {
             setIsCameraScannerOpen(false);
           }}
         />
+      )}
+
+      {/* ── OPEN SHIFT MODAL ── */}
+      {isOpenShiftModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Banknote className="w-5 h-5 text-teal-400" />
+              <span>Open Cashier Drawer Shift</span>
+            </h3>
+            <form onSubmit={handleOpenShift} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Opening Cash Float (Rs.) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={openingCashInput}
+                  onChange={(e) => setOpeningCashInput(e.target.value)}
+                  placeholder="e.g. 1000"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-mono text-white focus:outline-none focus:border-teal-500 mt-1"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">Starting cash float placed in drawer for change</p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsOpenShiftModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 text-xs font-bold"
+                >
+                  Start Shift
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── CLOSE SHIFT MODAL ── */}
+      {isCloseShiftModalOpen && activeShift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Banknote className="w-5 h-5 text-rose-400" />
+              <span>Close Shift #{activeShift.id} & Reconcile Drawer</span>
+            </h3>
+
+            <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex justify-between text-slate-400">
+                <span>Opening Float:</span>
+                <span className="font-mono text-white">Rs. {parseFloat(activeShift.opening_cash || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Total Cash Sales:</span>
+                <span className="font-mono text-emerald-400">Rs. {parseFloat(activeShift.total_cash_sales || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Expected Drawer Total:</span>
+                <span className="font-mono font-bold text-teal-300">
+                  Rs. {(parseFloat(activeShift.opening_cash || 0) + parseFloat(activeShift.total_cash_sales || 0)).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleCloseShift} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Actual Physical Counted Cash (Rs.) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={closingCashInput}
+                  onChange={(e) => setClosingCashInput(e.target.value)}
+                  placeholder="Enter counted cash in drawer"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-mono font-bold text-emerald-400 focus:outline-none focus:border-teal-500 mt-1"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCloseShiftModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold"
+                >
+                  Reconcile & Close Shift
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── QUICK ADD CUSTOMER MODAL ── */}
+      {isQuickCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <User className="w-5 h-5 text-teal-400" />
+              <span>Create Customer Profile</span>
+            </h3>
+            <form onSubmit={handleSaveQuickCustomer} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Customer Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Shayan Ali"
+                  value={quickCustomerForm.name}
+                  onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Phone Number</label>
+                <input
+                  type="text"
+                  placeholder="0310-9108174"
+                  value={quickCustomerForm.phone}
+                  onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Credit Limit (Rs.)</label>
+                <input
+                  type="number"
+                  placeholder="5000"
+                  value={quickCustomerForm.credit_limit}
+                  onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, credit_limit: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCustomerModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold"
+                >
+                  Save & Select
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
     </div>

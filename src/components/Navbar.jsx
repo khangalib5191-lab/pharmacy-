@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Pill, LayoutDashboard, ShoppingCart, LogOut, ShieldAlert, Wifi, UserCheck } from 'lucide-react';
+import { Pill, LayoutDashboard, ShoppingCart, LogOut, KeyRound, Wifi, UserCheck } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import ChangePasswordModal from './ChangePasswordModal';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   if (!user) return null;
 
@@ -25,13 +27,13 @@ export default function Navbar() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-teal-200 bg-clip-text text-transparent">
-                PharmaConnect
+                One Ten Pharmacy
               </h1>
               <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-400 border border-teal-500/30 rounded-full">
-                LAN Host
+                Rs. PKR
               </span>
             </div>
-            <p className="text-xs text-slate-400 font-medium">Local Pharmacy POS & Inventory</p>
+            <p className="text-xs text-slate-400 font-medium">Enterprise POS & ERP System</p>
           </div>
         </Link>
 
@@ -55,26 +57,27 @@ export default function Navbar() {
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
                 location.pathname === '/admin'
                   ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-lg shadow-sky-500/10'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
-              <span>Admin Portal</span>
+              <span>Admin Management</span>
             </Link>
           )}
         </nav>
 
-        {/* Active User & Role Controls */}
-        <div className="flex items-center gap-3">
+        {/* Active User & Controls */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          
           {/* LAN Connectivity Indicator */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">
             <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span>LAN Network Active</span>
+            <span>LAN Active</span>
           </div>
 
           {/* User Badge */}
-          <div className="flex items-center gap-2 pl-3 border-l border-slate-800">
-            <div className="text-right hidden md:block">
+          <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-slate-800">
+            <div className="text-right hidden sm:block">
               <p className="text-xs font-semibold text-slate-200">{user.name}</p>
               <div className="flex items-center justify-end gap-1">
                 <span
@@ -82,12 +85,23 @@ export default function Navbar() {
                     user.role === 'ADMIN' ? 'bg-amber-400' : 'bg-emerald-400'
                   }`}
                 />
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {user.role}
                 </span>
               </div>
             </div>
 
+            {/* Change Password / PIN Button for All Users */}
+            <button
+              onClick={() => setIsPasswordModalOpen(true)}
+              title="Security: Change Password or 4-Digit Login PIN"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-teal-500/20 text-slate-300 hover:text-teal-300 border border-slate-700/60 hover:border-teal-500/40 text-xs font-semibold transition-all"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-teal-400" />
+              <span className="hidden md:inline">PIN / Password</span>
+            </button>
+
+            {/* Logout Button */}
             <button
               onClick={logout}
               title="Logout"
@@ -100,6 +114,12 @@ export default function Navbar() {
         </div>
 
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+      />
     </header>
   );
 }

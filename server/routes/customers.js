@@ -43,28 +43,31 @@ router.get('/:id', verifyToken, async (req, res) => {
 });
 
 // POST /api/customers
-router.post('/', verifyToken, requireAdmin, async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
   try {
     const { name, phone, email, address, tax_number, opening_balance, credit_limit, payment_terms, status, notes } = req.body;
-    if (!name) return res.status(400).json({ success: false, message: 'Customer name is required.' });
+    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Customer name is required.' });
+    
     const result = await run(
       `INSERT INTO customers (name, phone, email, address, tax_number, opening_balance, credit_limit, payment_terms, status, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name.trim(), phone || null, email || null, address || null, tax_number || null,
-       parseFloat(opening_balance || 0), parseFloat(credit_limit || 0), payment_terms || 'Net 30', status || 'active', notes || null]
+      [name.trim(), phone?.trim() || null, email?.trim() || null, address?.trim() || null, tax_number?.trim() || null,
+       parseFloat(opening_balance || 0), parseFloat(credit_limit || 0), payment_terms || 'Net 30', status || 'active', notes?.trim() || null]
     );
-    // Record opening balance in ledger if any
+
+    // Record opening balance in ledger if greater than 0
     if (parseFloat(opening_balance || 0) > 0) {
       await run(
-        `INSERT INTO customer_ledger (customer_id, transaction_type, credit, balance, notes, created_by) VALUES (?, 'opening_balance', ?, ?, 'Opening Balance', ?)`,
-        [result.id, parseFloat(opening_balance), parseFloat(opening_balance), req.user.id]
+        `INSERT INTO customer_ledger (customer_id, transaction_type, debit, balance, notes, created_by) VALUES (?, 'opening_balance', ?, ?, 'Opening Credit Balance', ?)`,
+        [result.id, parseFloat(opening_balance), parseFloat(opening_balance), req.user?.id || 1]
       );
     }
-    await logAudit({ userId: req.user.id, username: req.user.username, action: 'CREATE_CUSTOMER', entityType: 'customer', entityId: result.id, description: `Created customer ${name}`, req });
-    return res.status(201).json({ success: true, message: 'Customer created.', customerId: result.id });
+    
+    await logAudit({ userId: req.user?.id || 1, username: req.user?.username || 'Staff', action: 'CREATE_CUSTOMER', entityType: 'customer', entityId: result.id, description: `Created customer ${name}`, req });
+    return res.status(201).json({ success: true, message: 'Customer created successfully.', customerId: result.id, customer: { id: result.id, name: name.trim(), phone: phone?.trim(), credit_limit: parseFloat(credit_limit || 0), balance: parseFloat(opening_balance || 0) } });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Failed to create customer.' });
+    console.error('Customer Creation Error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to create customer profile: ' + (err.message || 'Database error') });
   }
 });
 

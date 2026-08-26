@@ -40,7 +40,7 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
         {/* Printable Receipt Content */}
         <div className="p-6 overflow-y-auto" id="printable-receipt">
           <div className="text-center pb-4 border-b border-slate-700/60">
-            <h2 className="text-xl font-bold tracking-tight text-white uppercase">PharmaConnect Pharmacy</h2>
+            <h2 className="text-xl font-bold tracking-tight text-white uppercase">One Ten Pharmacy</h2>
             <p className="text-xs text-slate-400">123 Health Care Boulevard, Main Market</p>
             <p className="text-xs text-slate-400">Tel: +92-300-0000000 | Pharmacy POS</p>
           </div>

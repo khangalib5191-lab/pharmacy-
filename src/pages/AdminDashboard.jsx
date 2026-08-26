@@ -39,6 +39,13 @@ import {
   Lock,
   Eye,
   Percent,
+  Receipt,
+  Printer,
+  X,
+  CreditCard,
+  Banknote,
+  KeyRound,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 import {
@@ -59,7 +66,7 @@ export default function AdminDashboard() {
   const { user, token, showToast } = useAuth();
   const navigate = useNavigate();
 
-  // Active module tab
+  // Active navigation tab
   const [activeTab, setActiveTab] = useState('analytics');
 
   // Analytics & Graph State
@@ -76,17 +83,25 @@ export default function AdminDashboard() {
   const [medLoading, setMedLoading] = useState(false);
   const [isMedModalOpen, setIsMedModalOpen] = useState(false);
   const [editingMed, setEditingMed] = useState(null);
-  const [barcodePrintItem, setBarcodePrintItem] = useState(null);
+  const [barcodePrintMed, setBarcodePrintMed] = useState(null);
 
   // Inventory & Expiry State
   const [expiryData, setExpiryData] = useState(null);
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
-  const [adjustForm, setAdjustForm] = useState({ medicine_id: '', adjustment_type: 'add', quantity: '', reason: 'Inventory count adjustment', notes: '' });
+  const [adjustForm, setAdjustForm] = useState({
+    medicine_id: '',
+    adjustment_type: 'add',
+    quantity: '',
+    reason: 'Stock count adjustment',
+    notes: '',
+  });
 
-  // Suppliers & Purchases State
+  // Suppliers & Procurement State
   const [suppliers, setSuppliers] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [isQuickSupplierModalOpen, setIsQuickSupplierModalOpen] = useState(false);
+  const [quickSupplierForm, setQuickSupplierForm] = useState({ name: '', company: '', phone: '', address: '' });
   const [purchaseForm, setPurchaseForm] = useState({
     supplier_id: '',
     purchase_date: new Date().toISOString().split('T')[0],
@@ -94,7 +109,17 @@ export default function AdminDashboard() {
     discount: 0,
     paid_amount: 0,
     payment_method: 'Cash',
-    items: [{ medicine_id: '', quantity: 10, unit_cost: 10, batch_number: 'BATCH-' + Date.now().toString().slice(-4), expiry_date: '2028-01-01' }],
+    notes: '',
+    items: [
+      {
+        medicine_id: '',
+        quantity: 10,
+        unit_cost: 10,
+        selling_price: 15,
+        batch_number: 'BATCH-' + Date.now().toString().slice(-4),
+        expiry_date: '2028-12-31',
+      },
+    ],
   });
 
   // Supplier Returns State
@@ -111,7 +136,22 @@ export default function AdminDashboard() {
   // Customers State
   const [customers, setCustomers] = useState([]);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
-  const [customerForm, setCustomerForm] = useState({ name: '', phone: '', address: '', credit_limit: 5000, opening_balance: 0 });
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone: '',
+    address: '',
+    credit_limit: 5000,
+    opening_balance: 0,
+  });
+
+  // Ledger Viewing State (Supplier & Customer)
+  const [viewingLedgerSupplier, setViewingLedgerSupplier] = useState(null);
+  const [supplierLedgerEntries, setSupplierLedgerEntries] = useState([]);
+  const [supplierPaymentAmount, setSupplierPaymentAmount] = useState('');
+  
+  const [viewingLedgerCustomer, setViewingLedgerCustomer] = useState(null);
+  const [customerLedgerEntries, setCustomerLedgerEntries] = useState([]);
+  const [customerPaymentAmount, setCustomerPaymentAmount] = useState('');
 
   // Cashier Shifts State
   const [shifts, setShifts] = useState([]);
@@ -123,10 +163,18 @@ export default function AdminDashboard() {
   const [reportData, setReportData] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
 
-  // Users Management State
+  // Staff & Security State
   const [usersList, setUsersList] = useState([]);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [userForm, setUserForm] = useState({ username: '', password: '', name: '', role: 'CASHIER', pin: '' });
+  const [userForm, setUserForm] = useState({
+    username: '',
+    password: '',
+    name: '',
+    role: 'CASHIER',
+    pin: '',
+  });
+  const [resettingUser, setResettingUser] = useState(null);
+  const [newStaffPassword, setNewStaffPassword] = useState('');
 
   // Audit Logs & Backup Info
   const [auditLogs, setAuditLogs] = useState([]);
@@ -153,7 +201,7 @@ export default function AdminDashboard() {
     status: 'active',
   });
 
-  // RBAC Guard: Protect `/admin` against non-admin
+  // RBAC Guard
   useEffect(() => {
     if (user && user.role !== 'ADMIN') {
       showToast('Access Denied: Admin privileges required.', 'error');
@@ -161,7 +209,7 @@ export default function AdminDashboard() {
     }
   }, [user, navigate]);
 
-  // Data Fetchers
+  // Data Fetching
   const fetchAnalytics = async () => {
     try {
       setAnalyticsLoading(true);
@@ -285,7 +333,7 @@ export default function AdminDashboard() {
     fetchExpiryData();
   }, []);
 
-  // Tab switch effect
+  // Tab switch
   useEffect(() => {
     if (activeTab === 'analytics') {
       fetchAnalytics();
@@ -296,9 +344,11 @@ export default function AdminDashboard() {
     } else if (activeTab === 'procurement') {
       fetchPurchases();
       fetchSuppliers();
+      fetchMedicines();
     } else if (activeTab === 'returns') {
       fetchPurchaseReturns();
       fetchSuppliers();
+      fetchMedicines();
     } else if (activeTab === 'suppliers') {
       fetchSuppliers();
     } else if (activeTab === 'customers') {
@@ -314,7 +364,7 @@ export default function AdminDashboard() {
     }
   }, [activeTab, graphView, graphDate]);
 
-  // Product Create/Update
+  // Product Save
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     try {
@@ -362,26 +412,66 @@ export default function AdminDashboard() {
     }
   };
 
-  // Direct Purchase Save
-  const handleSavePurchase = async (e) => {
+  // Quick Save Supplier from GRN
+  const handleSaveQuickSupplier = async (e) => {
     e.preventDefault();
+    if (!quickSupplierForm.name || !quickSupplierForm.name.trim()) {
+      showToast('Supplier name is required', 'error');
+      return;
+    }
     try {
-      const res = await fetch('/api/purchases', {
+      const res = await fetch('/api/suppliers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(purchaseForm),
+        body: JSON.stringify(quickSupplierForm),
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Purchase recorded & stock updated', 'success');
+        showToast('Supplier created and added to dropdown!', 'success');
+        setIsQuickSupplierModalOpen(false);
+        setQuickSupplierForm({ name: '', company: '', phone: '', address: '' });
+        await fetchSuppliers();
+        if (data.supplierId || data.id) {
+          setPurchaseForm((prev) => ({ ...prev, supplier_id: data.supplierId || data.id }));
+        }
+      } else {
+        showToast(data.message || 'Failed to add supplier', 'error');
+      }
+    } catch (err) {
+      showToast('Network error adding supplier', 'error');
+    }
+  };
+
+  // Direct Purchase & GRN Save
+  const handleSavePurchase = async (e) => {
+    e.preventDefault();
+    try {
+      const validItems = purchaseForm.items.filter((i) => i.medicine_id && i.quantity > 0);
+      if (validItems.length === 0) {
+        showToast('Please add at least one medicine item to the purchase invoice', 'error');
+        return;
+      }
+
+      const res = await fetch('/api/purchases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...purchaseForm,
+          items: validItems,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Purchase ${data.purchase_number} recorded & stock updated!`, 'success');
         setIsPurchaseModalOpen(false);
         fetchPurchases();
         fetchMedicines();
+        fetchSuppliers();
       } else {
         showToast(data.message || 'Purchase failed', 'error');
       }
     } catch (err) {
-      showToast('Error recording purchase', 'error');
+      showToast('Error recording purchase invoice', 'error');
     }
   };
 
@@ -389,7 +479,6 @@ export default function AdminDashboard() {
   const handleSaveSupplierReturn = async (e) => {
     e.preventDefault();
     try {
-      // 1. Create return draft
       const res = await fetch('/api/purchase-returns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -397,17 +486,18 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        // 2. Immediately confirm to deduct stock and update supplier ledger
+        // Immediately confirm
         const cRes = await fetch(`/api/purchase-returns/${data.returnId}/confirm`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         });
         const cData = await cRes.json();
         if (cData.success) {
-          showToast(`Supplier return ${data.return_number} confirmed! Stock decreased.`, 'success');
+          showToast(`Supplier return ${data.return_number} confirmed! Stock decreased & ledger adjusted.`, 'success');
           setIsReturnModalOpen(false);
           fetchPurchaseReturns();
           fetchMedicines();
+          fetchSuppliers();
         } else {
           showToast(cData.message || 'Failed to confirm return', 'error');
         }
@@ -419,25 +509,106 @@ export default function AdminDashboard() {
     }
   };
 
-  // Create Customer
-  const handleSaveCustomer = async (e) => {
-    e.preventDefault();
+  // View Supplier Ledger Statement
+  const openSupplierLedger = async (supplier) => {
     try {
-      const res = await fetch('/api/customers', {
+      setViewingLedgerSupplier(supplier);
+      const res = await fetch(`/api/suppliers/${supplier.id}/ledger`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.success) setSupplierLedgerEntries(data.ledger);
+    } catch (err) {
+      showToast('Error loading supplier ledger', 'error');
+    }
+  };
+
+  // Record Payment to Supplier
+  const handleRecordSupplierPayment = async (e) => {
+    e.preventDefault();
+    if (!supplierPaymentAmount || parseFloat(supplierPaymentAmount) <= 0) return;
+    try {
+      const res = await fetch(`/api/suppliers/${viewingLedgerSupplier.id}/payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(customerForm),
+        body: JSON.stringify({ amount: parseFloat(supplierPaymentAmount), notes: 'Supplier Payment' }),
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Customer created', 'success');
-        setIsCustomerModalOpen(false);
+        showToast('Payment recorded in supplier ledger', 'success');
+        setSupplierPaymentAmount('');
+        openSupplierLedger(viewingLedgerSupplier);
+        fetchSuppliers();
+      } else {
+        showToast(data.message, 'error');
+      }
+    } catch (err) {
+      showToast('Error recording payment', 'error');
+    }
+  };
+
+  // View Customer Ledger Statement
+  const openCustomerLedger = async (customer) => {
+    try {
+      setViewingLedgerCustomer(customer);
+      const res = await fetch(`/api/customers/${customer.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.success) setCustomerLedgerEntries(data.ledger);
+    } catch (err) {
+      showToast('Error loading customer ledger', 'error');
+    }
+  };
+
+  // Record Payment from Customer
+  const handleRecordCustomerPayment = async (e) => {
+    e.preventDefault();
+    if (!customerPaymentAmount || parseFloat(customerPaymentAmount) <= 0) return;
+    try {
+      const res = await fetch(`/api/customers/${viewingLedgerCustomer.id}/payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: parseFloat(customerPaymentAmount), notes: 'Credit Payment Receipt' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Customer payment received', 'success');
+        setCustomerPaymentAmount('');
+        openCustomerLedger(viewingLedgerCustomer);
         fetchCustomers();
       } else {
         showToast(data.message, 'error');
       }
     } catch (err) {
-      showToast('Error creating customer', 'error');
+      showToast('Error recording customer payment', 'error');
+    }
+  };
+
+  // Create Customer
+  const handleSaveCustomer = async (e) => {
+    e.preventDefault();
+    if (!customerForm.name || !customerForm.name.trim()) {
+      showToast('Customer name is required', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...customerForm,
+          credit_limit: parseFloat(customerForm.credit_limit || 0),
+          opening_balance: parseFloat(customerForm.opening_balance || 0),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Customer profile created for ${customerForm.name}!`, 'success');
+        setIsCustomerModalOpen(false);
+        setCustomerForm({ name: '', phone: '', address: '', credit_limit: 5000, opening_balance: 0 });
+        await fetchCustomers();
+      } else {
+        showToast(data.message || 'Failed to create customer', 'error');
+      }
+    } catch (err) {
+      showToast('Network error creating customer', 'error');
     }
   };
 
@@ -452,7 +623,7 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast('User created successfully', 'success');
+        showToast('Staff user created', 'success');
         setIsUserModalOpen(false);
         setUserForm({ username: '', password: '', name: '', role: 'CASHIER', pin: '' });
         fetchUsers();
@@ -460,7 +631,33 @@ export default function AdminDashboard() {
         showToast(data.message, 'error');
       }
     } catch (err) {
-      showToast('Error creating user', 'error');
+      showToast('Error creating staff user', 'error');
+    }
+  };
+
+  // Admin Reset Password for staff member
+  const handleResetStaffPassword = async (e) => {
+    e.preventDefault();
+    if (!newStaffPassword || newStaffPassword.length < 6) {
+      showToast('New password must be at least 6 characters', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/auth/reset-password/${resettingUser.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ new_password: newStaffPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Password reset successfully for ${resettingUser.username}`, 'success');
+        setResettingUser(null);
+        setNewStaffPassword('');
+      } else {
+        showToast(data.message, 'error');
+      }
+    } catch (err) {
+      showToast('Error resetting password', 'error');
     }
   };
 
@@ -486,7 +683,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-white">Pharmacy ERP Management</h1>
             <span className="px-2.5 py-1 text-xs font-bold bg-teal-500/10 text-teal-400 border border-teal-500/30 rounded-lg">
-              PKR Currency
+              PKR (Rs.)
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -497,7 +694,7 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/pos')}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-lg shadow-teal-600/20 transition"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-teal-500/20 transition"
           >
             <Pill className="w-4 h-4" />
             <span>Open POS Counter</span>
@@ -505,7 +702,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Navigation Pills Bar */}
+      {/* Navigation Bar */}
       <div className="flex flex-wrap gap-2 glass-card p-2 rounded-2xl border border-slate-800">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -539,7 +736,7 @@ export default function AdminDashboard() {
                 <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">
                   Rs. {analytics.metrics.today_revenue.toFixed(2)}
                 </div>
-                <div className="text-[10px] text-slate-500 mt-1">{analytics.metrics.today_transactions} transactions completed</div>
+                <div className="text-[10px] text-slate-500 mt-1">{analytics.metrics.today_transactions} sales completed</div>
               </div>
 
               <div className="glass-card p-5 rounded-2xl border border-slate-800">
@@ -573,8 +770,8 @@ export default function AdminDashboard() {
           <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
-                <h3 className="font-bold text-white text-lg">Sales & Profit Timeline (PKR)</h3>
-                <p className="text-xs text-slate-400">Dynamic multi-period revenue, COGS, and gross profit</p>
+                <h3 className="font-bold text-white text-lg">Sales & Gross Profit Timeline (PKR)</h3>
+                <p className="text-xs text-slate-400">Dynamic multi-period revenue, COGS, and gross profit in Rs.</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -626,7 +823,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ──────────────── TAB 2: PRODUCT MASTER & INVENTORY ──────────────── */}
+      {/* ──────────────── TAB 2: PRODUCTS & BATCHES ──────────────── */}
       {activeTab === 'inventory' && (
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-card p-4 rounded-2xl border border-slate-800">
@@ -636,7 +833,7 @@ export default function AdminDashboard() {
                 type="text"
                 value={medSearch}
                 onChange={(e) => setMedSearch(e.target.value)}
-                placeholder="Search products by SKU, Trade Name, Generic, Barcode..."
+                placeholder="Search products by SKU code, Trade Name, Generic, Barcode..."
                 className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
               />
             </div>
@@ -653,10 +850,10 @@ export default function AdminDashboard() {
                   });
                   setIsMedModalOpen(true);
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition"
               >
                 <Plus className="w-4 h-4" />
-                <span>Add Product</span>
+                <span>Add Medicine</span>
               </button>
               <button
                 onClick={() => setIsAdjustModalOpen(true)}
@@ -749,10 +946,17 @@ export default function AdminDashboard() {
                           setFormData({ ...med });
                           setIsMedModalOpen(true);
                         }}
-                        className="p-1 text-slate-400 hover:text-teal-300 transition mr-2"
-                        title="Edit Product"
+                        className="p-1.5 text-slate-400 hover:text-teal-300 transition mr-1"
+                        title="Edit Medicine"
                       >
                         <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setBarcodePrintMed(med)}
+                        className="p-1.5 text-slate-400 hover:text-sky-300 transition"
+                        title="Print Barcode Label"
+                      >
+                        <QrCode className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
@@ -768,15 +972,36 @@ export default function AdminDashboard() {
         <div className="space-y-6">
           <div className="flex items-center justify-between glass-card p-4 rounded-2xl border border-slate-800">
             <div>
-              <h3 className="font-bold text-white text-base">Purchase Invoices & GRN</h3>
-              <p className="text-xs text-slate-400">Record stock replenishment from pharmaceutical distributors</p>
+              <h3 className="font-bold text-white text-base">Purchase Invoices & Goods Receiving (GRN)</h3>
+              <p className="text-xs text-slate-400">Record distributor deliveries, update stock, cost prices, batches, and supplier payables</p>
             </div>
             <button
-              onClick={() => setIsPurchaseModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition"
+              onClick={() => {
+                setPurchaseForm({
+                  supplier_id: suppliers[0]?.id || '',
+                  purchase_date: new Date().toISOString().split('T')[0],
+                  supplier_invoice: '',
+                  discount: 0,
+                  paid_amount: 0,
+                  payment_method: 'Cash',
+                  notes: '',
+                  items: [
+                    {
+                      medicine_id: medicines[0]?.id || '',
+                      quantity: 10,
+                      unit_cost: medicines[0]?.cost_price || 10,
+                      selling_price: medicines[0]?.selling_price || 15,
+                      batch_number: 'BATCH-' + Date.now().toString().slice(-4),
+                      expiry_date: '2028-12-31',
+                    },
+                  ],
+                });
+                setIsPurchaseModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/20 transition"
             >
               <Plus className="w-4 h-4" />
-              <span>Record Purchase</span>
+              <span>Record Purchase / GRN</span>
             </button>
           </div>
 
@@ -790,25 +1015,37 @@ export default function AdminDashboard() {
                   <th className="py-3 px-3">Invoice Ref</th>
                   <th className="py-3 px-3">Total (Rs.)</th>
                   <th className="py-3 px-3">Paid (Rs.)</th>
+                  <th className="py-3 px-3">Payment</th>
                   <th className="py-3 px-3">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {purchases.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 font-mono font-bold text-teal-300">{p.purchase_number}</td>
-                    <td className="py-3 px-3 text-slate-300">{p.purchase_date}</td>
-                    <td className="py-3 px-3 font-semibold text-white">{p.supplier_name || 'Direct'}</td>
-                    <td className="py-3 px-3 text-slate-400">{p.supplier_invoice || 'N/A'}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-white">Rs. {parseFloat(p.total_amount || 0).toFixed(2)}</td>
-                    <td className="py-3 px-3 font-mono text-emerald-400">Rs. {parseFloat(p.paid_amount || 0).toFixed(2)}</td>
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300">
-                        {p.status}
-                      </span>
+                {purchases.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-500">
+                      <Truck className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p className="font-semibold">No purchase invoices recorded yet</p>
+                      <p className="text-xs">Click "Record Purchase / GRN" above to receive stock</p>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  purchases.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-teal-300">{p.purchase_number}</td>
+                      <td className="py-3 px-3 text-slate-300">{p.purchase_date}</td>
+                      <td className="py-3 px-3 font-semibold text-white">{p.supplier_name || 'Direct Distributor'}</td>
+                      <td className="py-3 px-3 text-slate-400">{p.supplier_invoice || 'N/A'}</td>
+                      <td className="py-3 px-3 font-mono font-bold text-white">Rs. {parseFloat(p.total_amount || 0).toFixed(2)}</td>
+                      <td className="py-3 px-3 font-mono text-emerald-400">Rs. {parseFloat(p.paid_amount || 0).toFixed(2)}</td>
+                      <td className="py-3 px-3 font-semibold text-slate-300">{p.payment_method}</td>
+                      <td className="py-3 px-3">
+                        <span className="px-2.5 py-1 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -824,8 +1061,17 @@ export default function AdminDashboard() {
               <p className="text-xs text-slate-400">Return damaged, expired, or recalled medicines to suppliers (debits ledger & decreases stock)</p>
             </div>
             <button
-              onClick={() => setIsReturnModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold transition"
+              onClick={() => {
+                setReturnForm({
+                  supplier_id: suppliers[0]?.id || '',
+                  return_date: new Date().toISOString().split('T')[0],
+                  reason: 'damaged',
+                  notes: '',
+                  items: [{ medicine_id: medicines[0]?.id || '', quantity: 1, unit_cost: medicines[0]?.cost_price || 0, reason: 'damaged' }],
+                });
+                setIsReturnModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold shadow-lg shadow-rose-500/20 transition"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Create Supplier Return</span>
@@ -845,20 +1091,29 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {purchaseReturns.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 font-mono font-bold text-rose-300">{r.return_number}</td>
-                    <td className="py-3 px-3 text-slate-300">{r.return_date}</td>
-                    <td className="py-3 px-3 font-semibold text-white">{r.supplier_name || 'N/A'}</td>
-                    <td className="py-3 px-3 text-amber-300 font-semibold">{r.reason || 'General'}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-white">Rs. {parseFloat(r.total_amount || 0).toFixed(2)}</td>
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300">
-                        {r.status}
-                      </span>
+                {purchaseReturns.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center text-slate-500">
+                      <RotateCcw className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p className="font-semibold">No supplier returns created yet</p>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  purchaseReturns.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 font-mono font-bold text-rose-300">{r.return_number}</td>
+                      <td className="py-3 px-3 text-slate-300">{r.return_date}</td>
+                      <td className="py-3 px-3 font-semibold text-white">{r.supplier_name || 'N/A'}</td>
+                      <td className="py-3 px-3 text-amber-300 font-semibold">{r.reason || 'General'}</td>
+                      <td className="py-3 px-3 font-mono font-bold text-white">Rs. {parseFloat(r.total_amount || 0).toFixed(2)}</td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300">
+                          {r.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -885,6 +1140,7 @@ export default function AdminDashboard() {
                   <th className="py-3 px-3">Total Purchases</th>
                   <th className="py-3 px-3">Total Returns</th>
                   <th className="py-3 px-3">Current Balance (Rs.)</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -897,6 +1153,14 @@ export default function AdminDashboard() {
                     <td className="py-3 px-3 font-mono text-rose-400">Rs. {parseFloat(s.total_returns || 0).toFixed(2)}</td>
                     <td className="py-3 px-3 font-mono font-bold text-amber-400">
                       Rs. {parseFloat(s.balance || 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => openSupplierLedger(s)}
+                        className="px-3 py-1.5 bg-teal-500/10 hover:bg-teal-500 text-teal-300 hover:text-slate-950 border border-teal-500/30 rounded-lg font-bold text-xs transition"
+                      >
+                        Statement Ledger
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -932,6 +1196,7 @@ export default function AdminDashboard() {
                   <th className="py-3 px-3">Credit Limit</th>
                   <th className="py-3 px-3">Total Sales</th>
                   <th className="py-3 px-3">Outstanding Balance (Rs.)</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -943,6 +1208,14 @@ export default function AdminDashboard() {
                     <td className="py-3 px-3 font-mono text-emerald-400">Rs. {parseFloat(c.total_sales || 0).toFixed(2)}</td>
                     <td className="py-3 px-3 font-mono font-bold text-amber-400">
                       Rs. {parseFloat(c.balance || 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => openCustomerLedger(c)}
+                        className="px-3 py-1.5 bg-teal-500/10 hover:bg-teal-500 text-teal-300 hover:text-slate-950 border border-teal-500/30 rounded-lg font-bold text-xs transition"
+                      >
+                        View Ledger
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1051,12 +1324,238 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Report Display */}
-          {reportData && (
-            <div className="glass-card p-6 rounded-2xl border border-slate-800">
-              <pre className="text-xs font-mono text-slate-300 overflow-x-auto p-4 bg-slate-950 rounded-xl">
-                {JSON.stringify(reportData, null, 2)}
-              </pre>
+          {/* Visual Reports Section */}
+          {reportLoading ? (
+            <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center text-slate-400">
+              <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-teal-400" />
+              <p className="font-semibold text-xs">Generating report data...</p>
+            </div>
+          ) : !reportData ? (
+            <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center text-slate-500">
+              <BarChart3 className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p className="font-semibold text-sm">Select dates and click "Run" to view report</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              
+              {/* 1. SALES SUMMARY REPORT */}
+              {reportType === 'sales' && reportData.totals && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Total Net Sales</div>
+                      <div className="text-xl font-bold font-mono text-emerald-400 mt-1">
+                        Rs. {parseFloat(reportData.totals.total_sales || 0).toFixed(2)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{reportData.totals.count} transactions</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Total Gross Profit</div>
+                      <div className="text-xl font-bold font-mono text-teal-400 mt-1">
+                        Rs. {parseFloat(reportData.totals.total_profit || 0).toFixed(2)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">COGS: Rs. {parseFloat(reportData.totals.total_cost || 0).toFixed(2)}</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Total Discounts Given</div>
+                      <div className="text-xl font-bold font-mono text-rose-400 mt-1">
+                        Rs. {parseFloat(reportData.totals.total_discount || 0).toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Average Ticket Value</div>
+                      <div className="text-xl font-bold font-mono text-sky-400 mt-1">
+                        Rs. {reportData.totals.count > 0 ? (reportData.totals.total_sales / reportData.totals.count).toFixed(2) : '0.00'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase border-b border-slate-800">
+                        <tr>
+                          <th className="py-2.5 px-3">Receipt #</th>
+                          <th className="py-2.5 px-3">Date & Time</th>
+                          <th className="py-2.5 px-3">Cashier</th>
+                          <th className="py-2.5 px-3">Customer</th>
+                          <th className="py-2.5 px-3">Payment</th>
+                          <th className="py-2.5 px-3">Subtotal</th>
+                          <th className="py-2.5 px-3">Discount</th>
+                          <th className="py-2.5 px-3">Total (Rs.)</th>
+                          <th className="py-2.5 px-3">Profit (Rs.)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {(reportData.sales || []).map((s) => (
+                          <tr key={s.id} className="hover:bg-slate-800/40 transition">
+                            <td className="py-2 px-3 font-mono font-bold text-teal-300">{s.receipt_number}</td>
+                            <td className="py-2 px-3 text-slate-400">{new Date(s.created_at).toLocaleString()}</td>
+                            <td className="py-2 px-3 text-white font-medium">{s.cashier_name}</td>
+                            <td className="py-2 px-3 text-slate-300">{s.customer_name || 'Walk-in'}</td>
+                            <td className="py-2 px-3 font-semibold text-slate-300">{s.payment_method}</td>
+                            <td className="py-2 px-3 font-mono">Rs. {parseFloat(s.subtotal || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono text-rose-400">Rs. {parseFloat(s.discount || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-emerald-400">Rs. {parseFloat(s.total_amount || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-teal-300">Rs. {parseFloat(s.gross_profit || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. PRODUCT VELOCITY REPORT */}
+              {reportType === 'products' && (
+                <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
+                  <div className="p-3.5 bg-slate-950/80 border-b border-slate-800 font-bold text-white text-xs">
+                    Top Selling Medicines Ranked by Sales Volume & Profitability
+                  </div>
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950 text-slate-400 font-bold uppercase border-b border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center">Rank</th>
+                        <th className="py-2.5 px-3">Medicine Name</th>
+                        <th className="py-2.5 px-3">Dosage</th>
+                        <th className="py-2.5 px-3">Units Sold</th>
+                        <th className="py-2.5 px-3">Total Revenue</th>
+                        <th className="py-2.5 px-3">Total COGS</th>
+                        <th className="py-2.5 px-3">Gross Profit</th>
+                        <th className="py-2.5 px-3">Transactions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {(reportData.products || []).map((p, idx) => (
+                        <tr key={idx} className="hover:bg-slate-800/40 transition">
+                          <td className="py-2 px-3 text-center">
+                            <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center font-bold text-[10px] ${
+                              idx === 0 ? 'bg-amber-500 text-slate-950' : idx === 1 ? 'bg-slate-300 text-slate-950' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-bold text-white">{p.trade_name}</td>
+                          <td className="py-2 px-3 text-slate-400">{p.dosage || 'N/A'}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-teal-300">{p.total_qty_sold}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-emerald-400">Rs. {parseFloat(p.total_revenue || 0).toFixed(2)}</td>
+                          <td className="py-2 px-3 font-mono text-slate-400">Rs. {parseFloat(p.total_cogs || 0).toFixed(2)}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-teal-400">Rs. {parseFloat(p.total_profit || 0).toFixed(2)}</td>
+                          <td className="py-2 px-3 font-mono text-slate-300">{p.transaction_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* 3. STOCK VALUATION REPORT */}
+              {reportType === 'valuation' && reportData.summary && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Total Stock Units</div>
+                      <div className="text-xl font-bold font-mono text-white mt-1">
+                        {reportData.summary.total_units} Units
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{reportData.summary.total_items} distinct products</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Cost Valuation</div>
+                      <div className="text-xl font-bold font-mono text-amber-400 mt-1">
+                        Rs. {parseFloat(reportData.summary.total_cost_valuation || 0).toFixed(2)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">Total capital invested in stock</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Retail Valuation</div>
+                      <div className="text-xl font-bold font-mono text-emerald-400 mt-1">
+                        Rs. {parseFloat(reportData.summary.total_retail_valuation || 0).toFixed(2)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">Estimated gross selling value</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl border border-slate-800">
+                      <div className="text-slate-400 text-xs font-semibold">Potential Profit</div>
+                      <div className="text-xl font-bold font-mono text-teal-400 mt-1">
+                        Rs. {parseFloat(reportData.summary.potential_profit || 0).toFixed(2)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">Unrealized stock margin</div>
+                    </div>
+                  </div>
+
+                  <div className="glass-card rounded-2xl overflow-hidden border border-slate-800 max-h-96 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase border-b border-slate-800 sticky top-0">
+                        <tr>
+                          <th className="py-2.5 px-3">SKU</th>
+                          <th className="py-2.5 px-3">Product Name</th>
+                          <th className="py-2.5 px-3">Stock Units</th>
+                          <th className="py-2.5 px-3">Unit Cost</th>
+                          <th className="py-2.5 px-3">Unit Retail</th>
+                          <th className="py-2.5 px-3">Cost Valuation</th>
+                          <th className="py-2.5 px-3">Retail Valuation</th>
+                          <th className="py-2.5 px-3">Potential Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {(reportData.stock || []).map((s) => (
+                          <tr key={s.id} className="hover:bg-slate-800/40 transition">
+                            <td className="py-2 px-3 font-mono font-bold text-teal-300">{s.product_code || 'MED-000'}</td>
+                            <td className="py-2 px-3 font-semibold text-white">{s.trade_name}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-white">{s.stock_quantity}</td>
+                            <td className="py-2 px-3 font-mono">Rs. {parseFloat(s.cost_price || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono text-emerald-400">Rs. {parseFloat(s.selling_price || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono text-amber-300">Rs. {parseFloat(s.stock_cost_value || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono text-emerald-300">Rs. {parseFloat(s.stock_retail_value || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-teal-300">Rs. {parseFloat(s.potential_profit || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. PROFIT & LOSS REPORT */}
+              {reportType === 'profit' && reportData.data && (
+                <div className="glass-card p-6 rounded-2xl border border-slate-800 max-w-2xl mx-auto space-y-4">
+                  <div className="text-center pb-3 border-b border-slate-800">
+                    <h4 className="text-lg font-bold text-white">Profit & Loss Income Statement</h4>
+                    <p className="text-xs text-slate-400">Period: {reportStartDate} to {reportEndDate}</p>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs text-slate-300">
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-400 font-semibold">Gross Sales Revenue:</span>
+                      <span className="font-mono font-bold text-white">Rs. {parseFloat(reportData.data.gross_sales || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-1 text-rose-400">
+                      <span>Less: Customer Sales Returns:</span>
+                      <span className="font-mono font-bold">-Rs. {parseFloat(reportData.data.sales_returns || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-1.5 border-t border-slate-800 font-bold text-white text-sm">
+                      <span>Net Sales:</span>
+                      <span className="text-emerald-400 font-mono">Rs. {parseFloat(reportData.data.net_sales || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-1 text-amber-400">
+                      <span>Less: Cost of Goods Sold (COGS):</span>
+                      <span className="font-mono font-bold">-Rs. {parseFloat(reportData.data.cogs || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-t border-b border-slate-800 font-bold text-sm text-teal-300 bg-slate-950/60 px-3 rounded-lg">
+                      <span>Gross Profit ({reportData.data.gross_margin_percent}% Margin):</span>
+                      <span className="font-mono">Rs. {parseFloat(reportData.data.gross_profit || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-1 text-slate-400">
+                      <span>Less: Operating Expenses:</span>
+                      <span className="font-mono">-Rs. {parseFloat(reportData.data.total_expenses || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-t border-slate-700 font-bold text-base text-white bg-emerald-500/10 px-4 rounded-xl border border-emerald-500/30">
+                      <span>Net Profit ({reportData.data.net_margin_percent}% Net Margin):</span>
+                      <span className="text-emerald-400 font-mono">Rs. {parseFloat(reportData.data.net_profit || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </div>
@@ -1067,7 +1566,7 @@ export default function AdminDashboard() {
         <div className="space-y-6">
           <div className="flex items-center justify-between glass-card p-4 rounded-2xl border border-slate-800">
             <div>
-              <h3 className="font-bold text-white text-base">User Accounts & Access Control</h3>
+              <h3 className="font-bold text-white text-base">Staff Accounts & Access Control</h3>
               <p className="text-xs text-slate-400">Manage cashier credentials, roles, PINs, and security permissions</p>
             </div>
             <button
@@ -1089,6 +1588,7 @@ export default function AdminDashboard() {
                   <th className="py-3 px-3">PIN</th>
                   <th className="py-3 px-3">Status</th>
                   <th className="py-3 px-3">Last Login</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -1110,6 +1610,18 @@ export default function AdminDashboard() {
                       </span>
                     </td>
                     <td className="py-3 px-3 text-slate-400">{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => {
+                          setResettingUser(u);
+                          setNewStaffPassword('');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-300 font-semibold text-xs transition border border-slate-700"
+                        title="Reset Staff Password"
+                      >
+                        Reset Password
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1122,7 +1634,6 @@ export default function AdminDashboard() {
       {activeTab === 'backup' && (
         <div className="space-y-6">
           
-          {/* Backup Action Card */}
           <div className="glass-panel p-6 rounded-3xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h3 className="font-bold text-white text-lg flex items-center gap-2">
@@ -1153,7 +1664,6 @@ export default function AdminDashboard() {
             </a>
           </div>
 
-          {/* Audit Logs Trail */}
           <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
             <div className="p-4 bg-slate-950/80 border-b border-slate-800 font-bold text-white text-sm">
               Live System Audit Logs (Last 50 Events)
@@ -1187,11 +1697,468 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ──────────────── MODAL: ADD / EDIT PRODUCT ──────────────── */}
+      {/* ──────────────── MODAL 1: RECORD PURCHASE & GRN (COMPLETE WORKFLOW) ──────────────── */}
+      {isPurchaseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Truck className="w-5 h-5 text-teal-400" />
+                <h3 className="text-lg font-bold text-white">Record Purchase Invoice & Goods Receiving (GRN)</h3>
+              </div>
+              <button onClick={() => setIsPurchaseModalOpen(false)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePurchase} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-slate-400">Supplier *</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickSupplierModalOpen(true)}
+                      className="text-[10px] font-bold text-teal-400 hover:text-teal-300 flex items-center gap-0.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ New Supplier</span>
+                    </button>
+                  </div>
+                  <select
+                    required
+                    value={purchaseForm.supplier_id}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, supplier_id: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white"
+                  >
+                    <option value="">Select distributor...</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.company || 'Distributor'})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Supplier Invoice #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. INV-99410"
+                    value={purchaseForm.supplier_invoice}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, supplier_invoice: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Invoice / GRN Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={purchaseForm.purchase_date}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, purchase_date: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">Delivered Medicines & Batch Info</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        items: [
+                          ...purchaseForm.items,
+                          {
+                            medicine_id: medicines[0]?.id || '',
+                            quantity: 10,
+                            unit_cost: medicines[0]?.cost_price || 10,
+                            selling_price: medicines[0]?.selling_price || 15,
+                            batch_number: 'BATCH-' + Date.now().toString().slice(-4),
+                            expiry_date: '2028-12-31',
+                          },
+                        ],
+                      });
+                    }}
+                    className="flex items-center gap-1 text-xs font-bold text-teal-300 hover:text-teal-200 bg-teal-500/10 px-2.5 py-1 rounded-lg border border-teal-500/20"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Item</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {purchaseForm.items.map((item, idx) => (
+                    <div key={idx} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 grid grid-cols-1 md:grid-cols-6 gap-2 items-center">
+                      <div className="md:col-span-2">
+                        <label className="text-[10px] text-slate-400">Medicine Product</label>
+                        <select
+                          value={item.medicine_id}
+                          onChange={(e) => {
+                            const med = medicines.find(m => String(m.id) === String(e.target.value));
+                            const updated = [...purchaseForm.items];
+                            updated[idx].medicine_id = e.target.value;
+                            if (med) {
+                              updated[idx].unit_cost = med.cost_price;
+                              updated[idx].selling_price = med.selling_price;
+                            }
+                            setPurchaseForm({ ...purchaseForm, items: updated });
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
+                        >
+                          <option value="">Select product...</option>
+                          {medicines.map(m => (
+                            <option key={m.id} value={m.id}>{m.trade_name} ({m.dosage || ''})</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-400">Batch #</label>
+                        <input
+                          type="text"
+                          value={item.batch_number}
+                          onChange={(e) => {
+                            const updated = [...purchaseForm.items];
+                            updated[idx].batch_number = e.target.value;
+                            setPurchaseForm({ ...purchaseForm, items: updated });
+                          }}
+                          className="w-full px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-400">Expiry Date</label>
+                        <input
+                          type="date"
+                          value={item.expiry_date}
+                          onChange={(e) => {
+                            const updated = [...purchaseForm.items];
+                            updated[idx].expiry_date = e.target.value;
+                            setPurchaseForm({ ...purchaseForm, items: updated });
+                          }}
+                          className="w-full px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-400">Qty (Units)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const updated = [...purchaseForm.items];
+                            updated[idx].quantity = parseFloat(e.target.value) || 0;
+                            setPurchaseForm({ ...purchaseForm, items: updated });
+                          }}
+                          className="w-full px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-mono"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <label className="text-[10px] text-slate-400">Cost (Rs.)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={item.unit_cost}
+                            onChange={(e) => {
+                              const updated = [...purchaseForm.items];
+                              updated[idx].unit_cost = parseFloat(e.target.value) || 0;
+                              setPurchaseForm({ ...purchaseForm, items: updated });
+                            }}
+                            className="w-full px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-mono"
+                          />
+                        </div>
+                        {purchaseForm.items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPurchaseForm({
+                                ...purchaseForm,
+                                items: purchaseForm.items.filter((_, i) => i !== idx),
+                              });
+                            }}
+                            className="p-1 text-rose-400 hover:text-rose-300 mt-4"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Totals & Payments */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-slate-800">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Discount on Invoice (Rs.)</label>
+                  <input
+                    type="number"
+                    value={purchaseForm.discount}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, discount: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Amount Paid Now (Rs.)</label>
+                  <input
+                    type="number"
+                    value={purchaseForm.paid_amount}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, paid_amount: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Payment Method</label>
+                  <select
+                    value={purchaseForm.payment_method}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, payment_method: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Bank">Bank Transfer</option>
+                    <option value="Credit">Credit (Supplier Account)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Calculated Total */}
+              <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-semibold">Total Purchase Invoice Amount:</span>
+                <span className="text-base font-bold text-emerald-400 font-mono">
+                  Rs. {purchaseForm.items.reduce((s, i) => s + (i.unit_cost * (i.quantity || 0)), 0).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsPurchaseModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 text-xs font-bold"
+                >
+                  Confirm Purchase & Update Stock
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── MODAL 2: SUPPLIER LEDGER STATEMENT ──────────────── */}
+      {viewingLedgerSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-lg font-bold text-white">{viewingLedgerSupplier.name} — Statement of Account</h3>
+                <p className="text-xs text-slate-400">Current Balance: Rs. {viewingLedgerSupplier.balance || 0}</p>
+              </div>
+              <button onClick={() => setViewingLedgerSupplier(null)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Record Payment */}
+            <form onSubmit={handleRecordSupplierPayment} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex gap-2">
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Payment Amount (Rs.)"
+                value={supplierPaymentAmount}
+                onChange={(e) => setSupplierPaymentAmount(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl"
+              >
+                Disburse Payment
+              </button>
+            </form>
+
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Type</th>
+                    <th className="py-2.5 px-3">Debit (Paid)</th>
+                    <th className="py-2.5 px-3">Credit (Purchased)</th>
+                    <th className="py-2.5 px-3">Balance (Rs.)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {supplierLedgerEntries.map((e, i) => (
+                    <tr key={i} className="hover:bg-slate-800/40">
+                      <td className="py-2 px-3 text-slate-400 font-mono">{new Date(e.created_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-3 font-semibold text-teal-300">{e.transaction_type}</td>
+                      <td className="py-2 px-3 font-mono text-emerald-400">{e.debit > 0 ? `Rs. ${e.debit}` : '-'}</td>
+                      <td className="py-2 px-3 font-mono text-amber-400">{e.credit > 0 ? `Rs. ${e.credit}` : '-'}</td>
+                      <td className="py-2 px-3 font-mono font-bold text-white">Rs. {e.balance}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── MODAL 3: CUSTOMER LEDGER STATEMENT ──────────────── */}
+      {viewingLedgerCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-lg font-bold text-white">{viewingLedgerCustomer.name} — Customer Credit Ledger</h3>
+                <p className="text-xs text-slate-400">Outstanding Balance: Rs. {viewingLedgerCustomer.balance || 0}</p>
+              </div>
+              <button onClick={() => setViewingLedgerCustomer(null)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Record Payment */}
+            <form onSubmit={handleRecordCustomerPayment} className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex gap-2">
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Received Amount (Rs.)"
+                value={customerPaymentAmount}
+                onChange={(e) => setCustomerPaymentAmount(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl"
+              >
+                Record Receipt
+              </button>
+            </form>
+
+            <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950 text-slate-400 font-bold border-b border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Type</th>
+                    <th className="py-2.5 px-3">Debit (Credit Sale)</th>
+                    <th className="py-2.5 px-3">Credit (Paid)</th>
+                    <th className="py-2.5 px-3">Balance (Rs.)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {customerLedgerEntries.map((e, i) => (
+                    <tr key={i} className="hover:bg-slate-800/40">
+                      <td className="py-2 px-3 text-slate-400 font-mono">{new Date(e.created_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-3 font-semibold text-teal-300">{e.transaction_type}</td>
+                      <td className="py-2 px-3 font-mono text-rose-400">{e.debit > 0 ? `Rs. ${e.debit}` : '-'}</td>
+                      <td className="py-2 px-3 font-mono text-emerald-400">{e.credit > 0 ? `Rs. ${e.credit}` : '-'}</td>
+                      <td className="py-2 px-3 font-mono font-bold text-white">Rs. {e.balance}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── MODAL 4: ADMIN RESET STAFF PASSWORD ──────────────── */}
+      {resettingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-teal-400" />
+              Reset Password for: {resettingUser.username}
+            </h3>
+            <form onSubmit={handleResetStaffPassword} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">New Staff Password (min 6 chars) *</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newStaffPassword}
+                  onChange={(e) => setNewStaffPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setResettingUser(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold"
+                >
+                  Confirm Password Reset
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── MODAL 5: PRINTABLE BARCODE STICKER LABEL ──────────────── */}
+      {barcodePrintMed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="font-bold text-white text-sm">Barcode Label Sticker</span>
+              <button onClick={() => setBarcodePrintMed(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div id="barcode-sticker" className="p-4 bg-white text-slate-950 rounded-xl text-center space-y-1 shadow-inner">
+              <div className="font-bold text-sm tracking-tight">{barcodePrintMed.trade_name}</div>
+              <div className="text-[11px] text-slate-600">{barcodePrintMed.dosage} • {barcodePrintMed.form}</div>
+              <div className="font-mono text-xl font-bold py-1 tracking-widest">
+                ||| | |||| | ||| ||
+              </div>
+              <div className="text-[10px] font-mono text-slate-700 font-bold">
+                {barcodePrintMed.barcode || barcodePrintMed.product_code}
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-slate-300 text-xs font-bold">
+                <span>Exp: {barcodePrintMed.expiry_date || 'N/A'}</span>
+                <span className="text-emerald-700">Rs. {parseFloat(barcodePrintMed.selling_price || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => window.print()}
+              className="w-full py-2.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Print Sticker</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── MODAL 6: ADD / EDIT MEDICINE ──────────────── */}
       {isMedModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-white">{editingMed ? 'Edit Product' : 'Add New Medicine Product'}</h3>
+            <h3 className="text-lg font-bold text-white">{editingMed ? 'Edit Medicine Product' : 'Add New Medicine Product'}</h3>
             <form onSubmit={handleSaveProduct} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1327,7 +2294,7 @@ export default function AdminDashboard() {
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold"
                 >
-                  Save Product
+                  Save Medicine
                 </button>
               </div>
             </form>
@@ -1335,7 +2302,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ──────────────── MODAL: STOCK ADJUSTMENT ──────────────── */}
+      {/* ──────────────── MODAL 7: STOCK ADJUSTMENT ──────────────── */}
       {isAdjustModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4">
@@ -1413,7 +2380,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ──────────────── MODAL: CREATE SUPPLIER RETURN ──────────────── */}
+      {/* ──────────────── MODAL 8: CREATE SUPPLIER RETURN ──────────────── */}
       {isReturnModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 space-y-4">
@@ -1514,7 +2481,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ──────────────── MODAL: CREATE CUSTOMER ──────────────── */}
+      {/* ──────────────── MODAL 9: CREATE CUSTOMER ──────────────── */}
       {isCustomerModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4">
@@ -1570,7 +2537,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ──────────────── MODAL: CREATE USER ──────────────── */}
+      {/* ──────────────── MODAL 10: CREATE STAFF USER ──────────────── */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4">
@@ -1644,7 +2611,88 @@ export default function AdminDashboard() {
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold"
                 >
-                  Create User
+                  Create Staff User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── MODAL 11: QUICK ADD SUPPLIER ──────────────── */}
+      {isQuickSupplierModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Truck className="w-5 h-5 text-teal-400" />
+                <span>Add New Supplier / Distributor</span>
+              </h3>
+              <button onClick={() => setIsQuickSupplierModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickSupplier} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Supplier / Distributor Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Shaheen Pharmaceuticals"
+                  value={quickSupplierForm.name}
+                  onChange={(e) => setQuickSupplierForm({ ...quickSupplierForm, name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400">Company Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. GSK Distributor"
+                  value={quickSupplierForm.company}
+                  onChange={(e) => setQuickSupplierForm({ ...quickSupplierForm, company: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Phone</label>
+                  <input
+                    type="text"
+                    placeholder="0300-1234567"
+                    value={quickSupplierForm.phone}
+                    onChange={(e) => setQuickSupplierForm({ ...quickSupplierForm, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400">Address / City</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Lahore"
+                    value={quickSupplierForm.address}
+                    onChange={(e) => setQuickSupplierForm({ ...quickSupplierForm, address: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickSupplierModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold"
+                >
+                  Save & Select
                 </button>
               </div>
             </form>

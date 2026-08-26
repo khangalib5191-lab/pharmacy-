@@ -145,6 +145,33 @@ router.post('/change-password', verifyToken, async (req, res) => {
   }
 });
 
+// POST /api/auth/change-pin — change own 4-digit PIN
+router.post('/change-pin', verifyToken, async (req, res) => {
+  try {
+    const { current_password_or_pin, new_pin } = req.body;
+    if (!current_password_or_pin || !new_pin) {
+      return res.status(400).json({ success: false, message: 'Current password/PIN and new 4-digit PIN are required.' });
+    }
+    if (!/^\d{4}$/.test(new_pin)) {
+      return res.status(400).json({ success: false, message: 'New PIN must be exactly 4 numeric digits (e.g. 1234).' });
+    }
+
+    const user = await get('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    const isPassMatch = await bcrypt.compare(current_password_or_pin, user.password);
+    const isPinMatch = user.pin && user.pin === current_password_or_pin;
+
+    if (!isPassMatch && !isPinMatch) {
+      return res.status(401).json({ success: false, message: 'Current password or PIN verification failed.' });
+    }
+
+    await run(`UPDATE users SET pin = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [new_pin, req.user.id]);
+    await logAudit({ userId: req.user.id, username: req.user.username, action: 'CHANGE_PIN', entityType: 'user', entityId: req.user.id, description: 'User changed their 4-digit PIN', req });
+    return res.json({ success: true, message: '4-Digit Login PIN updated successfully!' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to update PIN.' });
+  }
+});
+
 // POST /api/auth/reset-password/:id — Admin resets another user's password
 router.post('/reset-password/:id', verifyToken, requireAdmin, async (req, res) => {
   try {

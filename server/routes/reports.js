@@ -39,14 +39,17 @@ router.get('/sales-summary', verifyToken, async (req, res) => {
 router.get('/product-sales', verifyToken, async (req, res) => {
   try {
     const { start_date, end_date, limit = 50 } = req.query;
-    let sql = `SELECT si.medicine_id, si.trade_name, si.dosage,
+    let sql = `SELECT si.medicine_id, 
+               COALESCE(si.trade_name, m.trade_name, 'Medicine #' || si.medicine_id) as trade_name, 
+               COALESCE(si.dosage, m.dosage, '') as dosage,
                SUM(si.quantity) as total_qty_sold,
                SUM(si.total_price) as total_revenue,
-               SUM(si.cost_price * si.quantity) as total_cogs,
-               SUM(si.total_price - (si.cost_price * si.quantity)) as total_profit,
+               SUM(COALESCE(si.cost_price, m.cost_price, 0) * si.quantity) as total_cogs,
+               SUM(si.total_price - (COALESCE(si.cost_price, m.cost_price, 0) * si.quantity)) as total_profit,
                COUNT(DISTINCT si.sale_id) as transaction_count
                FROM sale_items si
                JOIN sales s ON si.sale_id = s.id
+               LEFT JOIN medicines m ON si.medicine_id = m.id
                WHERE s.sale_status != 'cancelled'`;
     const params = [];
     if (start_date) { sql += ' AND date(s.created_at) >= date(?)'; params.push(start_date); }
@@ -57,6 +60,7 @@ router.get('/product-sales', verifyToken, async (req, res) => {
     const rows = await query(sql, params);
     return res.json({ success: true, products: rows });
   } catch (err) {
+    console.error('Product Sales Report Error:', err);
     return res.status(500).json({ success: false, message: 'Failed to generate product sales report.' });
   }
 });

@@ -802,6 +802,34 @@ export async function initDatabase() {
       }
     }
 
+    // ── Seed: Sample Suppliers (only if empty) ───────────────────────────
+    const supCount = await get(`SELECT COUNT(*) as count FROM suppliers`);
+    if (supCount.count === 0) {
+      await run(
+        `INSERT INTO suppliers (name, company, phone, email, address, opening_balance, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ['Shaheen Pharma Distribution', 'Shaheen Healthcare Ltd', '0300-1234567', 'orders@shaheenpharma.com', 'Lahore, Pakistan', 0, 'active']
+      );
+      await run(
+        `INSERT INTO suppliers (name, company, phone, email, address, opening_balance, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ['GSK Distribution Pakistan', 'GlaxoSmithKline Pakistan', '0321-9876543', 'supply@gsk.com.pk', 'Karachi, Pakistan', 0, 'active']
+      );
+      console.log('🌱 Seeded sample suppliers');
+    }
+
+    // ── Seed: Sample Customers (only if empty) ────────────────────────────
+    const custCount = await get(`SELECT COUNT(*) as count FROM customers`);
+    if (custCount.count === 0) {
+      await run(
+        `INSERT INTO customers (name, phone, credit_limit, opening_balance, status, notes) VALUES (?, ?, ?, ?, ?, ?)`,
+        ['Shayan Ali', '03109108174', 5000, 0, 'active', 'Regular customer']
+      );
+      await run(
+        `INSERT INTO customers (name, phone, credit_limit, opening_balance, status, notes) VALUES (?, ?, ?, ?, ?, ?)`,
+        ['Dr. Tariq Medical Clinic', '03005551234', 15000, 0, 'active', 'Clinic credit account']
+      );
+      console.log('🌱 Seeded sample customers');
+    }
+
     // ── Seed: Sample sales history (only if empty) ────────────────────────
     const salesCount = await get(`SELECT COUNT(*) as count FROM sales`);
     if (salesCount.count === 0) {
