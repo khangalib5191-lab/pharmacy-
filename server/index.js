@@ -9,6 +9,12 @@ import authRoutes from './routes/auth.js';
 import medicineRoutes from './routes/medicines.js';
 import salesRoutes from './routes/sales.js';
 import analyticsRoutes from './routes/analytics.js';
+import suppliersRoutes from './routes/suppliers.js';
+import purchasesRoutes from './routes/purchases.js';
+import purchaseReturnsRoutes from './routes/purchase_returns.js';
+import salesReturnsRoutes from './routes/sales_returns.js';
+import inventoryRoutes from './routes/inventory.js';
+import customersRoutes from './routes/customers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +32,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/medicines', medicineRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/suppliers', suppliersRoutes);
+app.use('/api/purchases', purchasesRoutes);
+app.use('/api/purchase-returns', purchaseReturnsRoutes);
+app.use('/api/sales-returns', salesReturnsRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/customers', customersRoutes);
 
 // Health Check API
 app.get('/api/health', (req, res) => {
