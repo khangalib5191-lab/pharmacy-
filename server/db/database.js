@@ -275,31 +275,67 @@ export async function initDatabase() {
     `);
 
     // ── 7. Users ───────────────────────────────────────────────────────────
-    await run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('ADMIN','CASHIER','EMPLOYEE','PHARMACIST','MANAGER','INVENTORY_MANAGER','PURCHASE_MANAGER','ACCOUNTANT')),
-        pin TEXT,
-        status TEXT DEFAULT 'active' CHECK(status IN ('active','inactive')),
-        created_by INTEGER REFERENCES users(id),
-        last_login DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Migrate existing users: EMPLOYEE → CASHIER role
-    await run(`UPDATE users SET role = 'CASHIER' WHERE role = 'EMPLOYEE'`);
-
-    // Add missing columns to users if upgrading
-    const userInfo = await query('PRAGMA table_info(users)');
-    const userCols = userInfo.map(c => c.name);
-    if (!userCols.includes('status')) await run(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'`);
-    if (!userCols.includes('last_login')) await run(`ALTER TABLE users ADD COLUMN last_login DATETIME`);
-    if (!userCols.includes('created_by')) await run(`ALTER TABLE users ADD COLUMN created_by INTEGER`);
+    const usersTable = await get(`SELECT sql FROM sqlite_master WHERE type='table' AND name='users'`);
+    if (usersTable) {
+      if (usersTable.sql.includes("'ADMIN', 'EMPLOYEE'") || usersTable.sql.includes("'ADMIN','EMPLOYEE'")) {
+        console.log('🔄 Migrating users table to expand role CHECK constraints...');
+        await run(`PRAGMA foreign_keys=OFF`);
+        await run(`ALTER TABLE users RENAME TO users_old`);
+        await run(`
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('ADMIN','CASHIER','EMPLOYEE','PHARMACIST','MANAGER','INVENTORY_MANAGER','PURCHASE_MANAGER','ACCOUNTANT')),
+            pin TEXT,
+            status TEXT DEFAULT 'active' CHECK(status IN ('active','inactive')),
+            created_by INTEGER REFERENCES users(id),
+            last_login DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        const oldCols = (await query(`PRAGMA table_info(users_old)`)).map(c => c.name);
+        const hasStatus = oldCols.includes('status') ? 'status' : "'active'";
+        const hasCreatedBy = oldCols.includes('created_by') ? 'created_by' : 'NULL';
+        const hasLastLogin = oldCols.includes('last_login') ? 'last_login' : 'NULL';
+        const hasUpdatedAt = oldCols.includes('updated_at') ? 'updated_at' : 'created_at';
+        
+        await run(`
+          INSERT INTO users (id, username, password, name, role, pin, status, created_by, last_login, created_at, updated_at)
+          SELECT id, username, password, name, 
+                 CASE WHEN role = 'EMPLOYEE' THEN 'CASHIER' ELSE role END,
+                 pin, ${hasStatus}, ${hasCreatedBy}, ${hasLastLogin}, created_at, ${hasUpdatedAt}
+          FROM users_old
+        `);
+        await run(`DROP TABLE users_old`);
+        await run(`PRAGMA foreign_keys=ON`);
+        console.log('✅ Users table migration complete');
+      } else {
+        const userInfo = await query('PRAGMA table_info(users)');
+        const userCols = userInfo.map(c => c.name);
+        if (!userCols.includes('status')) await run(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'`);
+        if (!userCols.includes('last_login')) await run(`ALTER TABLE users ADD COLUMN last_login DATETIME`);
+        if (!userCols.includes('created_by')) await run(`ALTER TABLE users ADD COLUMN created_by INTEGER`);
+      }
+    } else {
+      await run(`
+        CREATE TABLE users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL CHECK(role IN ('ADMIN','CASHIER','EMPLOYEE','PHARMACIST','MANAGER','INVENTORY_MANAGER','PURCHASE_MANAGER','ACCOUNTANT')),
+          pin TEXT,
+          status TEXT DEFAULT 'active' CHECK(status IN ('active','inactive')),
+          created_by INTEGER REFERENCES users(id),
+          last_login DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
 
     // ── 8. Batches ─────────────────────────────────────────────────────────
     await run(`
