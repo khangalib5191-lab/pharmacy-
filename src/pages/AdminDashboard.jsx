@@ -61,6 +61,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import ReceiptModal from '../components/ReceiptModal';
 
 export default function AdminDashboard() {
   const { user, token, showToast } = useAuth();
@@ -68,6 +69,7 @@ export default function AdminDashboard() {
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState('analytics');
+  const [reprintReceipt, setReprintReceipt] = useState(null);
 
   // Analytics & Graph State
   const [analytics, setAnalytics] = useState(null);
@@ -1526,6 +1528,7 @@ export default function AdminDashboard() {
                           <th className="py-2.5 px-3">Discount</th>
                           <th className="py-2.5 px-3">Total (Rs.)</th>
                           <th className="py-2.5 px-3">Profit (Rs.)</th>
+                          <th className="py-2.5 px-3 text-right">Receipt</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -1540,6 +1543,16 @@ export default function AdminDashboard() {
                             <td className="py-2 px-3 font-mono text-rose-400">Rs. {parseFloat(s.discount || 0).toFixed(2)}</td>
                             <td className="py-2 px-3 font-mono font-bold text-emerald-400">Rs. {parseFloat(s.total_amount || 0).toFixed(2)}</td>
                             <td className="py-2 px-3 font-mono font-bold text-teal-300">Rs. {parseFloat(s.gross_profit || 0).toFixed(2)}</td>
+                            <td className="py-2 px-3 text-right">
+                              <button
+                                onClick={() => setReprintReceipt(s)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border border-teal-500/30 text-[11px] font-bold transition shadow-sm"
+                                title="Print computerized receipt"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Print Bill</span>
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2841,6 +2854,15 @@ export default function AdminDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ──────────────── MODAL 8: REPRINT SALES RECEIPT ──────────────── */}
+      {reprintReceipt && (
+        <ReceiptModal
+          receipt={reprintReceipt}
+          onClose={() => setReprintReceipt(null)}
+          onNewSale={() => setReprintReceipt(null)}
+        />
       )}
 
     </div>

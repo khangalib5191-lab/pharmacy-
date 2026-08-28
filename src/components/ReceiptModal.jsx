@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, CheckCircle2, X } from 'lucide-react';
+import { Printer, CheckCircle2, X, FileText, Sparkles, Building2, Phone } from 'lucide-react';
 
 export default function ReceiptModal({ receipt, onClose, onNewSale }) {
   if (!receipt) return null;
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const handlePrint = () => {
     window.print();
@@ -20,119 +28,182 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
     return Number.isInteger(num) ? num.toString() : num.toFixed(2);
   };
 
+  const totalItemsCount = receipt.items?.length || 0;
+  const totalUnitsCount = receipt.items?.reduce((acc, item) => acc + (parseFloat(item.quantity) || 0), 0) || 0;
+
   const modalContent = (
     <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh] my-auto">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[95vh] my-auto">
         
-        {/* Header (No print) */}
-        <div className="no-print p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+        {/* Header Action Bar (Screen Only - No print) */}
+        <div className="no-print p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 sticky top-0 z-10">
           <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             <span>Sale Completed Successfully</span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition shadow-md shadow-teal-500/20"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Printable Receipt Content */}
-        <div className="p-6 overflow-y-auto" id="printable-receipt">
-          <div className="text-center pb-4 border-b border-slate-700/60">
-            <h2 className="text-xl font-bold tracking-tight text-white uppercase">One Ten Pharmacy</h2>
-            <p className="text-xs text-slate-400">123 Health Care Boulevard, Main Market</p>
-            <p className="text-xs text-slate-400">Tel: +92-300-0000000 | Pharmacy POS</p>
+        {/* Printable Receipt Paper Container */}
+        <div className="p-6 overflow-y-auto bg-slate-900 text-white" id="printable-receipt">
+          
+          {/* Pharmacy Top Header */}
+          <div className="text-center pb-3 border-b border-slate-700/80 print-border-dark space-y-1">
+            <h2 className="text-2xl font-extrabold tracking-tight uppercase print-text-dark text-white font-serif">
+              One Ten Pharmacy
+            </h2>
+            <p className="text-[11px] text-slate-300 print-text-dark font-medium">
+              Main Commercial Boulevard, Phase 2, Market Center
+            </p>
+            <p className="text-[10px] text-slate-400 print-text-dark">
+              Tel: +92-300-0000000 • Drug License: DL-PK-2026-110
+            </p>
+            <div className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-300 border border-teal-500/30 print-text-dark">
+              Retail Sales Invoice
+            </div>
           </div>
 
-          <div className="py-3 text-xs border-b border-slate-700/60 space-y-1 text-slate-300">
+          {/* Transaction Metadata */}
+          <div className="py-2.5 text-xs border-b border-slate-700/80 print-border-dark space-y-1 text-slate-300 print-text-dark">
             <div className="flex justify-between">
-              <span>Receipt #:</span>
-              <span className="font-mono font-bold text-white">{receipt.receipt_number}</span>
+              <span className="text-slate-400 print-text-dark">Invoice #:</span>
+              <span className="font-mono font-bold text-white print-text-dark">{receipt.receipt_number}</span>
             </div>
             <div className="flex justify-between">
-              <span>Date & Time:</span>
+              <span className="text-slate-400 print-text-dark">Date & Time:</span>
               <span className="font-mono">{new Date(receipt.created_at || Date.now()).toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span>Cashier:</span>
-              <span>{receipt.cashier_name || 'Staff Cashier'}</span>
+              <span className="text-slate-400 print-text-dark">Cashier:</span>
+              <span className="font-medium">{receipt.cashier_name || 'Staff Cashier'}</span>
             </div>
             <div className="flex justify-between">
-              <span>Customer:</span>
-              <span className="font-semibold text-teal-300">{receipt.customer_name || 'Walk-in Customer'}</span>
+              <span className="text-slate-400 print-text-dark">Customer:</span>
+              <span className="font-semibold text-teal-300 print-text-dark">{receipt.customer_name || 'Walk-in Customer'}</span>
             </div>
             <div className="flex justify-between">
-              <span>Payment Method:</span>
-              <span className="font-medium text-emerald-400">{receipt.payment_method || 'Cash'}</span>
+              <span className="text-slate-400 print-text-dark">Payment Mode:</span>
+              <span className="font-bold text-emerald-400 print-text-dark">{receipt.payment_method || 'Cash'}</span>
             </div>
           </div>
 
-          {/* Items Table */}
-          <div className="py-3 border-b border-slate-700/60">
+          {/* Itemized Medicine Table */}
+          <div className="py-2.5 border-b border-slate-700/80 print-border-dark">
             <table className="w-full text-xs text-left">
               <thead>
-                <tr className="text-slate-400 font-semibold border-b border-slate-800 pb-1">
-                  <th className="py-1">Item</th>
+                <tr className="text-slate-400 print-text-dark font-bold uppercase text-[10px] border-b border-slate-800 print-border-dark pb-1">
+                  <th className="py-1 text-left">Description</th>
                   <th className="py-1 text-center">Qty</th>
                   <th className="py-1 text-right">Price</th>
                   <th className="py-1 text-right">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40 text-slate-200">
+              <tbody className="divide-y divide-slate-800/50 print-border-dark text-slate-200 print-text-dark">
                 {receipt.items?.map((item, idx) => (
-                  <tr key={idx} className="py-1">
+                  <tr key={idx} className="py-1.5">
                     <td className="py-1.5 pr-1">
-                      <div className="font-semibold">{item.trade_name}</div>
-                      {item.dosage && <div className="text-[10px] text-slate-400">{item.dosage}</div>}
+                      <div className="font-bold text-white print-text-dark">{item.trade_name}</div>
+                      <div className="text-[10px] text-slate-400 print-text-dark">
+                        {item.dosage ? `${item.dosage} ` : ''}{item.generic_name ? `• ${item.generic_name}` : ''}
+                      </div>
                     </td>
-                    <td className="py-1.5 text-center font-mono">{formatQty(item.quantity)}</td>
-                    <td className="py-1.5 text-right font-mono text-slate-400">Rs. {parseFloat(item.unit_price).toFixed(2)}</td>
-                    <td className="py-1.5 text-right font-mono font-bold text-white">Rs. {parseFloat(item.total_price).toFixed(2)}</td>
+                    <td className="py-1.5 text-center font-mono font-medium">{formatQty(item.quantity)}</td>
+                    <td className="py-1.5 text-right font-mono text-slate-400 print-text-dark">
+                      Rs. {parseFloat(item.unit_price).toFixed(2)}
+                    </td>
+                    <td className="py-1.5 text-right font-mono font-bold text-white print-text-dark">
+                      Rs. {parseFloat(item.total_price).toFixed(2)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* Totals */}
-          <div className="pt-3 space-y-1.5 text-xs">
-            <div className="flex justify-between text-slate-300">
-              <span>Subtotal:</span>
-              <span className="font-mono">Rs. {parseFloat(receipt.subtotal || receipt.total_amount).toFixed(2)}</span>
+          {/* Financial Calculation Totals */}
+          <div className="pt-2.5 space-y-1.5 text-xs">
+            <div className="flex justify-between text-slate-400 print-text-dark text-[11px]">
+              <span>Items / Total Units:</span>
+              <span className="font-mono text-slate-300 print-text-dark">{totalItemsCount} items ({totalUnitsCount} units)</span>
+            </div>
+            <div className="flex justify-between text-slate-300 print-text-dark">
+              <span>Gross Subtotal:</span>
+              <span className="font-mono font-medium">Rs. {parseFloat(receipt.subtotal || receipt.total_amount).toFixed(2)}</span>
             </div>
             {parseFloat(receipt.discount || 0) > 0 && (
-              <div className="flex justify-between text-rose-400">
-                <span>Discount:</span>
-                <span className="font-mono">-Rs. {parseFloat(receipt.discount).toFixed(2)}</span>
+              <div className="flex justify-between text-rose-400 print-text-dark">
+                <span>Special Discount:</span>
+                <span className="font-mono font-semibold">-Rs. {parseFloat(receipt.discount).toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between text-base font-bold text-white pt-2 border-t border-slate-700">
-              <span>Net Total:</span>
-              <span className="font-mono text-emerald-400">Rs. {parseFloat(receipt.total_amount).toFixed(2)}</span>
+            <div className="flex justify-between text-base font-extrabold text-white print-text-dark pt-2 border-t border-slate-700 print-border-dark">
+              <span>NET PAYABLE:</span>
+              <span className="font-mono text-emerald-400 print-text-dark">
+                Rs. {parseFloat(receipt.total_amount).toFixed(2)}
+              </span>
             </div>
           </div>
 
-          {/* Footer Note */}
-          <div className="text-center pt-5 pb-2 text-[10px] text-slate-400 border-t border-slate-800 mt-4 space-y-1">
-            <p>Thank you for choosing One Ten Pharmacy!</p>
-            <p>Medicines once sold cannot be returned without original receipt.</p>
+          {/* Pharmacy Disclaimer */}
+          <div className="text-center pt-3 pb-2 text-[10px] text-slate-400 print-text-dark border-t border-slate-800 print-border-dark mt-3 space-y-0.5">
+            <p className="font-semibold text-slate-300 print-text-dark">Thank you for visiting One Ten Pharmacy!</p>
+            <p>Medicines once sold cannot be returned without original computer receipt within 3 days.</p>
+            <p>Cold-chain & cut-strip items are non-returnable.</p>
           </div>
+
+          {/* ── COMPANY BRANDING FOOTER (NEWARA SOFTWARE COMPANY) ── */}
+          <div className="mt-4 pt-3 border-t-2 border-dashed border-slate-700/80 print-border-dark text-center space-y-2">
+            
+            {/* Newara Logo / Banner */}
+            <div className="flex justify-center items-center gap-2">
+              <img
+                src="/newara-banner.jpg"
+                alt="Newara Software Company"
+                className="h-10 object-contain rounded-lg shadow-sm max-w-[200px]"
+              />
+            </div>
+
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-bold tracking-tight text-teal-300 print-text-dark">
+                Powered by Newara Software Company
+              </p>
+              <p className="text-[9px] text-slate-400 print-text-dark">
+                Enterprise Pharmacy ERP & Point of Sale System
+              </p>
+              <p className="text-[9px] text-slate-500 print-text-dark font-mono">
+                Support / Inquiries: 0310-9108174 • www.newarasoftware.com
+              </p>
+            </div>
+          </div>
+
         </div>
 
-        {/* Action Buttons (No print) */}
-        <div className="no-print p-4 bg-slate-900 border-t border-slate-800 flex gap-3">
+        {/* Action Buttons (Screen Only - No print) */}
+        <div className="no-print p-4 bg-slate-900 border-t border-slate-800 flex gap-3 sticky bottom-0 z-10">
           <button
             onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm transition shadow-sm border border-slate-700"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm transition shadow-sm border border-slate-700 active:scale-95"
           >
             <Printer className="w-4 h-4 text-teal-400" />
             <span>Print Receipt</span>
           </button>
           <button
             onClick={onNewSale}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 font-bold text-sm transition shadow-lg shadow-teal-500/20"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 font-bold text-sm transition shadow-lg shadow-teal-500/20 active:scale-95"
           >
             <span>Next Customer</span>
           </button>
