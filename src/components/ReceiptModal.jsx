@@ -166,33 +166,27 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
             <p>Cold-chain & cut-strip items are non-returnable.</p>
           </div>
 
-          {/* ── COMPANY BRANDING FOOTER (DUAL LOGO DESIGNER SECTION) ── */}
-          <div className="mt-4 pt-3 border-t-2 border-dashed border-slate-700/80 print-border-dark text-center space-y-2.5">
+          {/* ── COMPANY BRANDING FOOTER (ONLY TRANSPARENT NEWARA LOGO) ── */}
+          <div className="mt-4 pt-3 border-t border-dashed border-slate-700/80 print-border-dark text-center space-y-2">
             
-            {/* Dual Logos (Emblem + Banner) */}
-            <div className="flex items-center justify-center gap-3">
+            {/* Transparent Emblem Logo Centered */}
+            <div className="flex justify-center items-center">
               <img
                 src="/newara-emblem.jpg"
-                alt="Newara Emblem"
-                className="h-11 w-auto object-contain rounded-lg shadow-sm border border-slate-700/50 print-border-dark"
-              />
-              <div className="h-8 w-[1px] bg-slate-700 print-border-dark" />
-              <img
-                src="/newara-banner.jpg"
                 alt="Newara Software Company"
-                className="h-9 w-auto object-contain rounded-lg shadow-sm border border-slate-700/50 print-border-dark"
+                className="h-16 w-auto object-contain mx-auto transition-transform hover:scale-105"
               />
             </div>
 
             <div className="space-y-0.5">
-              <p className="text-[11px] font-extrabold tracking-wide uppercase text-teal-300 print-text-dark">
-                Powered by Newara Software Company
+              <p className="text-xs font-black tracking-wider uppercase bg-gradient-to-r from-teal-300 via-sky-300 to-teal-400 bg-clip-text text-transparent print-text-dark font-sans">
+                Newara Software Company
               </p>
-              <p className="text-[9px] text-slate-400 print-text-dark font-medium">
-                Enterprise Pharmacy ERP & Point of Sale System
+              <p className="text-[10px] text-slate-400 print-text-dark font-medium">
+                Enterprise Pharmacy POS & ERP Systems
               </p>
-              <p className="text-[9px] text-slate-500 print-text-dark font-mono font-semibold">
-                Tech Support & Inquiries: +92 310 9108174 • www.newarasoftware.com
+              <p className="text-[9px] text-slate-500 print-text-dark font-mono font-bold">
+                Helpline & Support: +92 310 9108174 • www.newarasoftware.com
               </p>
             </div>
           </div>
