@@ -4,6 +4,65 @@ import { verifyToken, requireAdmin, logAudit } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// GET /api/inventory/alerts — unified real-time alert center
+router.get('/alerts', verifyToken, async (req, res) => {
+  try {
+    const expired = await query(`
+      SELECT id, trade_name, generic_name, product_code, form, dosage, batch_number, expiry_date, stock_quantity, min_stock_alert, rack_location, cost_price, selling_price,
+      CAST((julianday(date('now')) - julianday(expiry_date)) AS INTEGER) as days_overdue
+      FROM medicines
+      WHERE status != 'inactive' AND expiry_date IS NOT NULL AND date(expiry_date) < date('now')
+      ORDER BY expiry_date ASC
+    `);
+
+    const expiringSoon = await query(`
+      SELECT id, trade_name, generic_name, product_code, form, dosage, batch_number, expiry_date, stock_quantity, min_stock_alert, rack_location, cost_price, selling_price,
+      CAST((julianday(expiry_date) - julianday(date('now'))) AS INTEGER) as days_remaining
+      FROM medicines
+      WHERE status != 'inactive' AND expiry_date IS NOT NULL AND date(expiry_date) >= date('now') AND date(expiry_date) <= date('now', '+90 days')
+      ORDER BY expiry_date ASC
+    `);
+
+    const outOfStock = await query(`
+      SELECT id, trade_name, generic_name, product_code, form, dosage, batch_number, expiry_date, stock_quantity, min_stock_alert, rack_location, cost_price, selling_price
+      FROM medicines
+      WHERE status != 'inactive' AND stock_quantity <= 0
+      ORDER BY trade_name ASC
+    `);
+
+    const lowStock = await query(`
+      SELECT id, trade_name, generic_name, product_code, form, dosage, batch_number, expiry_date, stock_quantity, min_stock_alert, rack_location, cost_price, selling_price,
+      (min_stock_alert - stock_quantity) as units_deficit
+      FROM medicines
+      WHERE status != 'inactive' AND stock_quantity > 0 AND stock_quantity <= min_stock_alert
+      ORDER BY stock_quantity ASC
+    `);
+
+    const summary = {
+      expired_count: expired.length,
+      expiring_soon_count: expiringSoon.length,
+      out_of_stock_count: outOfStock.length,
+      low_stock_count: lowStock.length,
+      total_expiry_alerts: expired.length + expiringSoon.length,
+      total_stock_alerts: outOfStock.length + lowStock.length,
+      total_alerts: expired.length + expiringSoon.length + outOfStock.length + lowStock.length
+    };
+
+    return res.json({
+      success: true,
+      summary,
+      alerts: {
+        expired,
+        expiring_soon: expiringSoon,
+        out_of_stock: outOfStock,
+        low_stock: lowStock
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch inventory alerts: ' + err.message });
+  }
+});
+
 // GET /api/inventory/movements
 router.get('/movements', verifyToken, async (req, res) => {
   try {

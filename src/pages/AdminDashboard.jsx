@@ -87,6 +87,7 @@ export default function AdminDashboard() {
 
   // Inventory & Expiry State
   const [expiryData, setExpiryData] = useState(null);
+  const [inventoryAlertFilter, setInventoryAlertFilter] = useState('all');
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [adjustForm, setAdjustForm] = useState({
     medicine_id: '',
@@ -865,39 +866,139 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Expiry Dashboard Buckets */}
+          {/* Expiry & Stock Health KPI Cards */}
           {expiryData && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-rose-500/10 border border-rose-500/30 p-3.5 rounded-xl">
-                <div className="text-rose-400 text-xs font-bold flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Expired Stock ({expiryData.expired.length})
+              <button
+                type="button"
+                onClick={() => setInventoryAlertFilter(inventoryAlertFilter === 'expired' ? 'all' : 'expired')}
+                className={`text-left p-3.5 rounded-2xl transition border ${
+                  inventoryAlertFilter === 'expired'
+                    ? 'bg-rose-500/25 border-rose-500 ring-2 ring-rose-500/50 shadow-lg'
+                    : 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20'
+                }`}
+              >
+                <div className="text-rose-400 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Expired Stock
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-white font-mono font-bold text-[10px]">
+                    {expiryData.expired.length}
+                  </span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">Must be quarantined or returned</div>
-              </div>
-              <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-xl">
-                <div className="text-amber-400 text-xs font-bold flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  Expiring in 7 Days ({expiryData.expiring_7.length})
+                <div className="text-[11px] text-slate-400 mt-1">Must be quarantined or returned to supplier</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInventoryAlertFilter(inventoryAlertFilter === 'expiring_7' ? 'all' : 'expiring_7')}
+                className={`text-left p-3.5 rounded-2xl transition border ${
+                  inventoryAlertFilter === 'expiring_7'
+                    ? 'bg-amber-500/25 border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
+                    : 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
+                }`}
+              >
+                <div className="text-amber-400 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Expiring in 7 Days
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-white font-mono font-bold text-[10px]">
+                    {expiryData.expiring_7.length}
+                  </span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">Immediate clearance / return</div>
-              </div>
-              <div className="bg-sky-500/10 border border-sky-500/30 p-3.5 rounded-xl">
-                <div className="text-sky-400 text-xs font-bold flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  Expiring in 30 Days ({expiryData.expiring_30.length})
+                <div className="text-[11px] text-slate-400 mt-1">Immediate FEFO clearance or return</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInventoryAlertFilter(inventoryAlertFilter === 'expiring_30' ? 'all' : 'expiring_30')}
+                className={`text-left p-3.5 rounded-2xl transition border ${
+                  inventoryAlertFilter === 'expiring_30'
+                    ? 'bg-sky-500/25 border-sky-500 ring-2 ring-sky-500/50 shadow-lg'
+                    : 'bg-sky-500/10 border-sky-500/30 hover:bg-sky-500/20'
+                }`}
+              >
+                <div className="text-sky-400 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Expiring in 30 Days
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-white font-mono font-bold text-[10px]">
+                    {expiryData.expiring_30.length}
+                  </span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">FEFO priority dispatch</div>
-              </div>
-              <div className="bg-slate-800 border border-slate-700 p-3.5 rounded-xl">
-                <div className="text-slate-300 text-xs font-bold flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  Expiring in 90 Days ({expiryData.expiring_90.length})
+                <div className="text-[11px] text-slate-400 mt-1">Priority dispatch / shelf rotation</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInventoryAlertFilter(inventoryAlertFilter === 'expiring_90' ? 'all' : 'expiring_90')}
+                className={`text-left p-3.5 rounded-2xl transition border ${
+                  inventoryAlertFilter === 'expiring_90'
+                    ? 'bg-slate-700 border-slate-500 ring-2 ring-slate-400/50 shadow-lg'
+                    : 'bg-slate-800 border border-slate-700 hover:bg-slate-700/80'
+                }`}
+              >
+                <div className="text-slate-300 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Expiring in 90 Days
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-700 text-white font-mono font-bold text-[10px]">
+                    {expiryData.expiring_90.length}
+                  </span>
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">Monitor supplier return window</div>
-              </div>
+              </button>
             </div>
           )}
+
+          {/* Quick Alert Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <span className="text-slate-400 text-[11px]">Filter List:</span>
+            <button
+              onClick={() => setInventoryAlertFilter('all')}
+              className={`px-3 py-1.5 rounded-xl transition ${
+                inventoryAlertFilter === 'all' ? 'bg-teal-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              All Items ({medicines.length})
+            </button>
+            <button
+              onClick={() => setInventoryAlertFilter('expired')}
+              className={`px-3 py-1.5 rounded-xl transition ${
+                inventoryAlertFilter === 'expired' ? 'bg-rose-500 text-white font-bold' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
+              }`}
+            >
+              🚨 Expired
+            </button>
+            <button
+              onClick={() => setInventoryAlertFilter('expiring_90')}
+              className={`px-3 py-1.5 rounded-xl transition ${
+                inventoryAlertFilter === 'expiring_90' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
+              }`}
+            >
+              ⏳ Expiring in ≤90 Days
+            </button>
+            <button
+              onClick={() => setInventoryAlertFilter('low_stock')}
+              className={`px-3 py-1.5 rounded-xl transition ${
+                inventoryAlertFilter === 'low_stock' ? 'bg-sky-500 text-slate-950 font-bold' : 'bg-slate-800 text-sky-400 hover:bg-slate-700'
+              }`}
+            >
+              ⚠️ Low Stock
+            </button>
+            <button
+              onClick={() => setInventoryAlertFilter('out_of_stock')}
+              className={`px-3 py-1.5 rounded-xl transition ${
+                inventoryAlertFilter === 'out_of_stock' ? 'bg-purple-500 text-white font-bold' : 'bg-slate-800 text-purple-400 hover:bg-slate-700'
+              }`}
+            >
+              ⛔ Out of Stock
+            </button>
+          </div>
 
           {/* Products Table */}
           <div className="glass-card rounded-2xl overflow-hidden border border-slate-800">
@@ -915,52 +1016,94 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {medicines.map((med) => (
-                  <tr key={med.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 font-mono">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-teal-300 font-bold">{med.product_code || 'MED-000'}</span>
-                      {med.barcode && <div className="text-[10px] text-slate-400">{med.barcode}</div>}
-                    </td>
-                    <td className="py-3 px-3 font-semibold text-white">
-                      {med.trade_name}
-                      <span className="block text-[10px] text-slate-400">{med.generic_name || med.brand || ''}</span>
-                    </td>
-                    <td className="py-3 px-3 font-mono">Rs. {parseFloat(med.cost_price || 0).toFixed(2)}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-emerald-400">Rs. {parseFloat(med.selling_price || 0).toFixed(2)}</td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded-full font-bold ${
-                        med.stock_quantity <= 0 ? 'bg-rose-500/20 text-rose-300' : med.stock_quantity <= med.min_stock_alert ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
-                      }`}>
-                        {med.stock_quantity}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
-                      <div>{med.batch_number || 'N/A'}</div>
-                      <div className="text-[10px] text-slate-400">{med.expiry_date || 'N/A'}</div>
-                    </td>
-                    <td className="py-3 px-3 text-slate-300">{med.rack_location || 'N/A'}</td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => {
-                          setEditingMed(med);
-                          setFormData({ ...med });
-                          setIsMedModalOpen(true);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-teal-300 transition mr-1"
-                        title="Edit Medicine"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setBarcodePrintMed(med)}
-                        className="p-1.5 text-slate-400 hover:text-sky-300 transition"
-                        title="Print Barcode Label"
-                      >
-                        <QrCode className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {medicines
+                  .filter((med) => {
+                    const matchSearch = !medSearch || 
+                      med.trade_name.toLowerCase().includes(medSearch.toLowerCase()) ||
+                      (med.product_code && med.product_code.toLowerCase().includes(medSearch.toLowerCase())) ||
+                      (med.generic_name && med.generic_name.toLowerCase().includes(medSearch.toLowerCase())) ||
+                      (med.barcode && med.barcode.toLowerCase().includes(medSearch.toLowerCase()));
+                    if (!matchSearch) return false;
+
+                    if (inventoryAlertFilter === 'all') return true;
+                    const now = new Date();
+                    const exp = med.expiry_date ? new Date(med.expiry_date) : null;
+                    const diffDays = exp ? Math.ceil((exp - now) / (1000 * 60 * 60 * 24)) : null;
+
+                    if (inventoryAlertFilter === 'expired') return diffDays !== null && diffDays < 0;
+                    if (inventoryAlertFilter === 'expiring_7') return diffDays !== null && diffDays >= 0 && diffDays <= 7;
+                    if (inventoryAlertFilter === 'expiring_30') return diffDays !== null && diffDays >= 0 && diffDays <= 30;
+                    if (inventoryAlertFilter === 'expiring_90') return diffDays !== null && diffDays >= 0 && diffDays <= 90;
+                    if (inventoryAlertFilter === 'low_stock') return med.stock_quantity > 0 && med.stock_quantity <= med.min_stock_alert;
+                    if (inventoryAlertFilter === 'out_of_stock') return med.stock_quantity <= 0;
+                    return true;
+                  })
+                  .map((med) => {
+                    const now = new Date();
+                    const exp = med.expiry_date ? new Date(med.expiry_date) : null;
+                    const diffDays = exp ? Math.ceil((exp - now) / (1000 * 60 * 60 * 24)) : null;
+                    const isExpired = diffDays !== null && diffDays < 0;
+                    const isExpiringSoon = diffDays !== null && diffDays >= 0 && diffDays <= 90;
+
+                    return (
+                      <tr key={med.id} className="hover:bg-slate-800/40 transition">
+                        <td className="py-3 px-4 font-mono">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-teal-300 font-bold">{med.product_code || 'MED-000'}</span>
+                          {med.barcode && <div className="text-[10px] text-slate-400 mt-0.5">{med.barcode}</div>}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-white">
+                          {med.trade_name}
+                          <span className="block text-[10px] text-slate-400">{med.generic_name || med.brand || ''}</span>
+                        </td>
+                        <td className="py-3 px-3 font-mono">Rs. {parseFloat(med.cost_price || 0).toFixed(2)}</td>
+                        <td className="py-3 px-3 font-mono font-bold text-emerald-400">Rs. {parseFloat(med.selling_price || 0).toFixed(2)}</td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
+                            med.stock_quantity <= 0 ? 'bg-rose-500/20 text-rose-300' : med.stock_quantity <= med.min_stock_alert ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                          }`}>
+                            {med.stock_quantity <= 0 ? 'Out of Stock (0)' : med.stock_quantity <= med.min_stock_alert ? `Low (${med.stock_quantity})` : `${med.stock_quantity} units`}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                          <div>Batch: {med.batch_number || 'N/A'}</div>
+                          {isExpired ? (
+                            <div className="text-[10px] font-bold text-rose-400 flex items-center gap-1 mt-0.5">
+                              <AlertTriangle className="w-3 h-3" />
+                              EXPIRED ({med.expiry_date})
+                            </div>
+                          ) : isExpiringSoon ? (
+                            <div className="text-[10px] font-bold text-amber-400 flex items-center gap-1 mt-0.5">
+                              <Clock className="w-3 h-3" />
+                              Exp in {diffDays}d ({med.expiry_date})
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-slate-400">{med.expiry_date || 'N/A'}</div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-slate-300">{med.rack_location || 'N/A'}</td>
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            onClick={() => {
+                              setEditingMed(med);
+                              setFormData({ ...med });
+                              setIsMedModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-teal-300 transition mr-1"
+                            title="Edit Medicine"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setBarcodePrintMed(med)}
+                            className="p-1.5 text-slate-400 hover:text-sky-300 transition"
+                            title="Print Barcode Label"
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>

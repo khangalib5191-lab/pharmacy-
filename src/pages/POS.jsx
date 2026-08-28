@@ -24,6 +24,9 @@ import {
   User,
   Percent,
   Calculator,
+  Clock,
+  ShieldAlert,
+  Bell,
 } from 'lucide-react';
 import ReceiptModal from '../components/ReceiptModal';
 import CameraScannerModal from '../components/CameraScannerModal';
@@ -258,6 +261,17 @@ export default function POS() {
 
   // 4. Cart Operations (Supporting Fractional Quantities: 1, 0.5, 0.33, 0.25, etc.)
   const addToCart = (medicine, initialQty = 1) => {
+    // 1. Expiration Safety Check
+    if (medicine.expiry_date) {
+      const expDate = new Date(medicine.expiry_date);
+      const today = new Date();
+      if (expDate < today) {
+        showToast(`🚨 CRITICAL SAFETY ALERT: Cannot dispense [${medicine.trade_name}] — Expired on ${medicine.expiry_date}!`, 'error');
+        return;
+      }
+    }
+
+    // 2. Stock Out Check
     if (medicine.stock_quantity <= 0) {
       showToast(`Cannot add [${medicine.trade_name}] - Item is Out of Stock!`, 'error');
       return;
@@ -591,51 +605,81 @@ export default function POS() {
                         </td>
 
                         <td className="py-3 px-3">
-                          {med.stock_quantity <= 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                              <XCircle className="w-3 h-3" />
-                              Out of Stock
-                            </span>
-                          ) : med.stock_quantity <= med.min_stock_alert ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                              <AlertTriangle className="w-3 h-3" />
-                              {med.stock_quantity} left
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                              <CheckCircle className="w-3 h-3" />
-                              {med.stock_quantity} in Stock
-                            </span>
-                          )}
+                          <div className="space-y-1">
+                            {/* Stock Status Badge */}
+                            {med.stock_quantity <= 0 ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                <XCircle className="w-3 h-3" />
+                                Out of Stock
+                              </span>
+                            ) : med.stock_quantity <= med.min_stock_alert ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                <AlertTriangle className="w-3 h-3" />
+                                Low: {med.stock_quantity} left
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle className="w-3 h-3" />
+                                {med.stock_quantity} in Stock
+                              </span>
+                            )}
+
+                            {/* Expiry Warning Badge */}
+                            {med.expiry_date && (
+                              <div>
+                                {new Date(med.expiry_date) < new Date() ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white animate-pulse">
+                                    <AlertTriangle className="w-2.5 h-2.5" />
+                                    EXPIRED ({med.expiry_date})
+                                  </span>
+                                ) : (new Date(med.expiry_date) - new Date()) / (1000 * 60 * 60 * 24) <= 90 ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                    <Clock className="w-2.5 h-2.5" />
+                                    Exp: {Math.ceil((new Date(med.expiry_date) - new Date()) / (1000 * 60 * 60 * 24))}d ({med.expiry_date})
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    Exp: {med.expiry_date}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => addToCart(med, 1)}
-                              disabled={med.stock_quantity <= 0}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                                med.stock_quantity <= 0
-                                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                                  : 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-sm'
-                              }`}
-                              title="Add 1 full unit"
-                            >
-                              +1 Full
-                            </button>
-                            <button
-                              onClick={() => addToCart(med, 0.5)}
-                              disabled={med.stock_quantity < 0.5}
-                              className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
-                                med.stock_quantity < 0.5
-                                  ? 'border-slate-800 text-slate-600 cursor-not-allowed'
-                                  : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-slate-950'
-                              }`}
-                              title="Add Half (0.5) unit / strip / pack"
-                            >
-                              +½
-                            </button>
-                          </div>
+                          {med.expiry_date && new Date(med.expiry_date) < new Date() ? (
+                            <span className="px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold uppercase">
+                              Blocked (Expired)
+                            </span>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => addToCart(med, 1)}
+                                disabled={med.stock_quantity <= 0}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                                  med.stock_quantity <= 0
+                                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                                    : 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-sm active:scale-95'
+                                }`}
+                                title="Add 1 full unit"
+                              >
+                                +1 Full
+                              </button>
+                              <button
+                                onClick={() => addToCart(med, 0.5)}
+                                disabled={med.stock_quantity < 0.5}
+                                className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
+                                  med.stock_quantity < 0.5
+                                    ? 'border-slate-800 text-slate-600 cursor-not-allowed'
+                                    : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-slate-950 active:scale-95'
+                                }`}
+                                title="Add Half (0.5) unit / strip / pack"
+                              >
+                                +½
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))

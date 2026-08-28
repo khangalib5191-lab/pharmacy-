@@ -1,17 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Pill, LayoutDashboard, ShoppingCart, LogOut, KeyRound, Wifi, UserCheck } from 'lucide-react';
+import { Pill, LayoutDashboard, ShoppingCart, LogOut, KeyRound, Wifi, Bell, AlertTriangle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import ChangePasswordModal from './ChangePasswordModal';
+import AlertsModal from './AlertsModal';
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const location = useLocation();
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
+  const [alertData, setAlertData] = useState(null);
+
+  const fetchAlerts = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/inventory/alerts', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAlertData(data);
+      }
+    } catch (err) {
+      // ignore in background
+    }
+  };
+
+  useEffect(() => {
+    fetchAlerts();
+    const timer = setInterval(fetchAlerts, 30000); // 30s auto-refresh
+    return () => clearInterval(timer);
+  }, [token]);
 
   if (!user) return null;
 
   const isAdmin = user.role === 'ADMIN';
+  const totalAlerts = alertData?.summary?.total_alerts || 0;
+  const expiredCount = alertData?.summary?.expired_count || 0;
+  const lowStockCount = (alertData?.summary?.out_of_stock_count || 0) + (alertData?.summary?.low_stock_count || 0);
 
   return (
     <header className="sticky top-0 z-40 glass-panel border-b border-slate-800/80 px-4 lg:px-8 py-3">
@@ -57,7 +84,7 @@ export default function Navbar() {
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
                 location.pathname === '/admin'
                   ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-lg shadow-sky-500/10'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
@@ -69,8 +96,32 @@ export default function Navbar() {
         {/* Active User & Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
           
+          {/* Expiration & Low Stock Alert Center Button */}
+          <button
+            onClick={() => setIsAlertsModalOpen(true)}
+            title="Open Pharmacy Expiry & Stock Alert Center"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all relative ${
+              totalAlerts > 0
+                ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/40 text-rose-300 shadow-lg shadow-rose-500/10'
+                : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="relative">
+              <Bell className="w-4 h-4" />
+              {totalAlerts > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              )}
+            </div>
+            <span className="hidden sm:inline">Alerts</span>
+            {totalAlerts > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold">
+                {totalAlerts}
+              </span>
+            )}
+          </button>
+
           {/* LAN Connectivity Indicator */}
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">
             <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
             <span>LAN Active</span>
           </div>
@@ -119,6 +170,14 @@ export default function Navbar() {
       <ChangePasswordModal
         isOpen={isPasswordModalOpen}
         onClose={() => setIsPasswordModalOpen(false)}
+      />
+
+      {/* Alerts Center Modal */}
+      <AlertsModal
+        isOpen={isAlertsModalOpen}
+        onClose={() => setIsAlertsModalOpen(false)}
+        alertData={alertData}
+        onRefresh={fetchAlerts}
       />
     </header>
   );
