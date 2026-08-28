@@ -166,22 +166,19 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
             <p>Cold-chain & cut-strip items are non-returnable.</p>
           </div>
 
-          {/* ── COMPANY BRANDING FOOTER (ONLY TRANSPARENT NEWARA LOGO) ── */}
+          {/* ── COMPANY BRANDING FOOTER (100% TRANSPARENT VECTOR NEWARA LOGO) ── */}
           <div className="mt-4 pt-3 border-t border-dashed border-slate-700/80 print-border-dark text-center space-y-2">
             
-            {/* Transparent Emblem Logo Centered */}
+            {/* Pure Transparent Vector Logo (No background / No checkerboard) */}
             <div className="flex justify-center items-center">
               <img
-                src="/newara-emblem.jpg"
+                src="/newara-logo-transparent.svg"
                 alt="Newara Software Company"
-                className="h-16 w-auto object-contain mx-auto transition-transform hover:scale-105"
+                className="h-20 w-auto object-contain mx-auto transition-transform hover:scale-105"
               />
             </div>
 
             <div className="space-y-0.5">
-              <p className="text-xs font-black tracking-wider uppercase bg-gradient-to-r from-teal-300 via-sky-300 to-teal-400 bg-clip-text text-transparent print-text-dark font-sans">
-                Newara Software Company
-              </p>
               <p className="text-[10px] text-slate-400 print-text-dark font-medium">
                 Enterprise Pharmacy POS & ERP Systems
               </p>
