@@ -8,6 +8,7 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'Enter') handlePrint();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -44,10 +45,10 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition shadow-md shadow-teal-500/20"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold transition shadow-md shadow-teal-500/20 active:scale-95"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print</span>
+              <span>Print Slip</span>
             </button>
             <button
               onClick={onClose}
@@ -165,27 +166,33 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
             <p>Cold-chain & cut-strip items are non-returnable.</p>
           </div>
 
-          {/* ── COMPANY BRANDING FOOTER (NEWARA SOFTWARE COMPANY) ── */}
-          <div className="mt-4 pt-3 border-t-2 border-dashed border-slate-700/80 print-border-dark text-center space-y-2">
+          {/* ── COMPANY BRANDING FOOTER (DUAL LOGO DESIGNER SECTION) ── */}
+          <div className="mt-4 pt-3 border-t-2 border-dashed border-slate-700/80 print-border-dark text-center space-y-2.5">
             
-            {/* Newara Logo / Banner */}
-            <div className="flex justify-center items-center gap-2">
+            {/* Dual Logos (Emblem + Banner) */}
+            <div className="flex items-center justify-center gap-3">
+              <img
+                src="/newara-emblem.jpg"
+                alt="Newara Emblem"
+                className="h-11 w-auto object-contain rounded-lg shadow-sm border border-slate-700/50 print-border-dark"
+              />
+              <div className="h-8 w-[1px] bg-slate-700 print-border-dark" />
               <img
                 src="/newara-banner.jpg"
                 alt="Newara Software Company"
-                className="h-10 object-contain rounded-lg shadow-sm max-w-[200px]"
+                className="h-9 w-auto object-contain rounded-lg shadow-sm border border-slate-700/50 print-border-dark"
               />
             </div>
 
             <div className="space-y-0.5">
-              <p className="text-[11px] font-bold tracking-tight text-teal-300 print-text-dark">
+              <p className="text-[11px] font-extrabold tracking-wide uppercase text-teal-300 print-text-dark">
                 Powered by Newara Software Company
               </p>
-              <p className="text-[9px] text-slate-400 print-text-dark">
+              <p className="text-[9px] text-slate-400 print-text-dark font-medium">
                 Enterprise Pharmacy ERP & Point of Sale System
               </p>
-              <p className="text-[9px] text-slate-500 print-text-dark font-mono">
-                Support / Inquiries: 0310-9108174 • www.newarasoftware.com
+              <p className="text-[9px] text-slate-500 print-text-dark font-mono font-semibold">
+                Tech Support & Inquiries: +92 310 9108174 • www.newarasoftware.com
               </p>
             </div>
           </div>
