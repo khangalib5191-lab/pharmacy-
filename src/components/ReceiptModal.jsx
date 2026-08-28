@@ -70,8 +70,8 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
             <p className="text-[11px] text-slate-300 print-text-dark font-medium">
               Main Commercial Boulevard, Phase 2, Market Center
             </p>
-            <p className="text-[10px] text-slate-400 print-text-dark">
-              Tel: +92-300-0000000 • Drug License: DL-PK-2026-110
+            <p className="text-[10px] text-slate-400 print-text-dark font-medium">
+              Tel: 0355-5456348 (+92 355 5456348) • Drug License: DL-PK-2026-110
             </p>
             <div className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-300 border border-teal-500/30 print-text-dark">
               Retail Sales Invoice
@@ -183,7 +183,7 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
                 Enterprise Pharmacy POS & ERP Systems
               </p>
               <p className="text-[9px] text-slate-500 print-text-dark font-mono font-bold">
-                Helpline & Support: +92 310 9108174 • www.newarasoftware.com
+                Helpline & Support: 0355-5456348 • www.newarasoftware.com
               </p>
             </div>
           </div>

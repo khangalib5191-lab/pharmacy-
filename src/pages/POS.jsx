@@ -1094,7 +1094,7 @@ export default function POS() {
                 <label className="text-[11px] font-semibold text-slate-400">Phone Number</label>
                 <input
                   type="text"
-                  placeholder="0310-9108174"
+                  placeholder="0355-5456348"
                   value={quickCustomerForm.phone}
                   onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, phone: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
