@@ -114,23 +114,40 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50 print-border-dark text-slate-200 print-text-dark">
-                {receipt.items?.map((item, idx) => (
-                  <tr key={idx} className="py-1.5">
-                    <td className="py-1.5 pr-1">
-                      <div className="font-bold text-white print-text-dark">{item.trade_name}</div>
-                      <div className="text-[10px] text-slate-400 print-text-dark">
-                        {item.dosage ? `${item.dosage} ` : ''}{item.generic_name ? `• ${item.generic_name}` : ''}
-                      </div>
-                    </td>
-                    <td className="py-1.5 text-center font-mono font-medium">{formatQty(item.quantity)}</td>
-                    <td className="py-1.5 text-right font-mono text-slate-400 print-text-dark">
-                      Rs. {parseFloat(item.unit_price).toFixed(2)}
-                    </td>
-                    <td className="py-1.5 text-right font-mono font-bold text-white print-text-dark">
-                      Rs. {parseFloat(item.total_price).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
+                {receipt.items?.map((item, idx) => {
+                  const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+                  const unitLabel = isPiece
+                    ? `${item.quantity} ${item.form || 'Capsule'}${item.quantity > 1 ? 's' : ''}`
+                    : `${formatQty(item.quantity)} Pk`;
+
+                  return (
+                    <tr key={idx} className="py-1.5">
+                      <td className="py-1.5 pr-1">
+                        <div className="font-bold text-white print-text-dark flex items-center gap-1">
+                          <span>{item.trade_name}</span>
+                          {isPiece && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-teal-500/20 text-teal-300 font-bold border border-teal-500/40 print-text-dark">
+                              Loose
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 print-text-dark">
+                          {item.dosage ? `${item.dosage} ` : ''}{item.generic_name ? `• ${item.generic_name}` : ''}
+                          {isPiece && ` • Loose Rate: Rs. ${parseFloat(item.unit_price).toFixed(2)}/unit`}
+                        </div>
+                      </td>
+                      <td className="py-1.5 text-center font-mono font-bold print-text-dark text-teal-300 text-[11px]">
+                        {unitLabel}
+                      </td>
+                      <td className="py-1.5 text-right font-mono text-slate-400 print-text-dark">
+                        Rs. {parseFloat(item.unit_price).toFixed(2)}
+                      </td>
+                      <td className="py-1.5 text-right font-mono font-bold text-white print-text-dark">
+                        Rs. {parseFloat(item.total_price).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

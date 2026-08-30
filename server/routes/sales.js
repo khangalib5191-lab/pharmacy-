@@ -19,12 +19,31 @@ router.post('/', verifyToken, async (req, res) => {
       if (isNaN(qty) || qty <= 0) {
         return res.status(400).json({ success: false, message: `Invalid quantity for item: ${item.trade_name}` });
       }
-      const med = await get('SELECT trade_name, stock_quantity, status, expiry_date FROM medicines WHERE id = ?', [item.id]);
+      const med = await get('SELECT trade_name, stock_quantity, pieces_per_pack, status, expiry_date FROM medicines WHERE id = ?', [item.id]);
       if (!med) return res.status(404).json({ success: false, message: `Product ID ${item.id} not found.` });
       if (med.status === 'blocked') return res.status(400).json({ success: false, message: `Product "${med.trade_name}" is blocked.` });
-      if (parseFloat(med.stock_quantity) < qty) {
-        return res.status(400).json({ success: false, message: `Insufficient stock for [${med.trade_name}]. Available: ${med.stock_quantity}, Requested: ${qty}` });
+      
+      const ppp = Math.max(1, parseInt(item.pieces_per_pack || med.pieces_per_pack) || 1);
+      const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+      const availableStockPacks = parseFloat(med.stock_quantity || 0);
+      const availablePieces = Math.round(availableStockPacks * ppp);
+
+      if (isPiece) {
+        if (availablePieces < qty) {
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient stock for [${med.trade_name}]. Available: ${availablePieces} loose units (${availableStockPacks.toFixed(2)} packs), Requested: ${qty} units`
+          });
+        }
+      } else {
+        if (availableStockPacks < qty) {
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient stock for [${med.trade_name}]. Available: ${availableStockPacks} packs, Requested: ${qty} packs`
+          });
+        }
       }
+
       if (med.expiry_date && new Date(med.expiry_date) < new Date()) {
         return res.status(400).json({ success: false, message: `"${med.trade_name}" is expired (${med.expiry_date}). Cannot sell expired products.` });
       }
@@ -35,8 +54,24 @@ router.post('/', verifyToken, async (req, res) => {
     let cost_total = 0;
     for (const item of items) {
       const qty = parseFloat(item.quantity);
-      const unitPrice = parseFloat(item.selling_price || item.unit_price || 0);
-      const costPrice = parseFloat(item.cost_price || 0);
+      const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+      const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+
+      let unitPrice = 0;
+      let costPrice = 0;
+
+      if (isPiece) {
+        unitPrice = parseFloat(item.unit_selling_price) > 0
+          ? parseFloat(item.unit_selling_price)
+          : parseFloat((parseFloat(item.selling_price || 0) / ppp).toFixed(2));
+        costPrice = parseFloat(item.unit_cost_price) > 0
+          ? parseFloat(item.unit_cost_price)
+          : parseFloat((parseFloat(item.cost_price || 0) / ppp).toFixed(2));
+      } else {
+        unitPrice = parseFloat(item.selling_price || item.unit_price || 0);
+        costPrice = parseFloat(item.cost_price || 0);
+      }
+
       subtotal += unitPrice * qty;
       cost_total += costPrice * qty;
     }
@@ -60,32 +95,61 @@ router.post('/', verifyToken, async (req, res) => {
       const processedItems = [];
       for (const item of items) {
         const qty = parseFloat(item.quantity);
-        const med = await get('SELECT cost_price, stock_quantity FROM medicines WHERE id = ?', [item.id]);
-        const unit_cost = parseFloat(item.cost_price || med.cost_price || 0);
-        const unitPrice = parseFloat(item.selling_price || item.unit_price || 0);
+        const med = await get('SELECT cost_price, selling_price, unit_cost_price, unit_selling_price, stock_quantity, pieces_per_pack FROM medicines WHERE id = ?', [item.id]);
+        const ppp = Math.max(1, parseInt(item.pieces_per_pack || med.pieces_per_pack) || 1);
+        const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+
+        let unitPrice = 0;
+        let unitCost = 0;
+        let stockDeductionPacks = 0;
+
+        if (isPiece) {
+          unitPrice = parseFloat(item.unit_selling_price) > 0
+            ? parseFloat(item.unit_selling_price)
+            : parseFloat((parseFloat(med.selling_price || item.selling_price || 0) / ppp).toFixed(2));
+          unitCost = parseFloat(item.unit_cost_price) > 0
+            ? parseFloat(item.unit_cost_price)
+            : parseFloat((parseFloat(med.cost_price || item.cost_price || 0) / ppp).toFixed(2));
+          stockDeductionPacks = qty / ppp;
+        } else {
+          unitPrice = parseFloat(item.selling_price || item.unit_price || med.selling_price || 0);
+          unitCost = parseFloat(item.cost_price || med.cost_price || 0);
+          stockDeductionPacks = qty;
+        }
+
         const itemTotal = unitPrice * qty;
 
-        // 2. Insert sale item with cost snapshot and float quantity
+        // 2. Insert sale item with sale_unit, pieces_per_pack, cost snapshot
         await run(
-          `INSERT INTO sale_items (sale_id, medicine_id, trade_name, dosage, quantity, unit_price, cost_price, discount, total_price)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [sale_id, item.id, item.trade_name, item.dosage || null, qty,
-           unitPrice, unit_cost, parseFloat(item.discount || 0), itemTotal]
+          `INSERT INTO sale_items (sale_id, medicine_id, trade_name, dosage, sale_unit, pieces_per_pack, quantity, unit_price, cost_price, discount, total_price)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [sale_id, item.id, item.trade_name, item.dosage || null, isPiece ? 'piece' : 'pack', ppp, qty,
+           unitPrice, unitCost, parseFloat(item.discount || 0), itemTotal]
         );
 
-        // 3. Deduct stock
+        // 3. Deduct stock in packs with high precision
         const stockBefore = parseFloat(med.stock_quantity || 0);
-        await run(`UPDATE medicines SET stock_quantity = stock_quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [qty, item.id]);
-        const stockAfter = stockBefore - qty;
+        await run(`UPDATE medicines SET stock_quantity = stock_quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [stockDeductionPacks, item.id]);
+        const stockAfter = stockBefore - stockDeductionPacks;
 
         // 4. Record inventory movement
         await run(
           `INSERT INTO inventory_movements (medicine_id, movement_type, quantity_out, stock_before, stock_after, reference_type, reference_id, reference_number, unit_cost, created_by)
            VALUES (?, 'sale', ?, ?, ?, 'sale', ?, ?, ?, ?)`,
-          [item.id, qty, stockBefore, stockAfter, sale_id, receipt_number, unit_cost, req.user.id]
+          [item.id, stockDeductionPacks, stockBefore, stockAfter, sale_id, receipt_number, unitCost, req.user.id]
         );
 
-        processedItems.push({ trade_name: item.trade_name, dosage: item.dosage, quantity: qty, unit_price: unitPrice, total_price: itemTotal });
+        processedItems.push({
+          trade_name: item.trade_name,
+          dosage: item.dosage,
+          generic_name: item.generic_name,
+          form: item.form,
+          sale_unit: isPiece ? 'piece' : 'pack',
+          pieces_per_pack: ppp,
+          quantity: qty,
+          unit_price: unitPrice,
+          total_price: itemTotal
+        });
       }
 
       // 5. Customer Ledger Entry if Credit payment

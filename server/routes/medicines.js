@@ -37,12 +37,34 @@ router.get('/', verifyToken, async (req, res) => {
     sql += ' ORDER BY m.trade_name ASC';
 
     const medicines = await query(sql, params);
-    const formatted = medicines.map(med => ({
-      ...med,
-      stock_status: med.stock_quantity === 0 ? 'OUT_OF_STOCK' : med.stock_quantity <= med.min_stock_alert ? 'LOW_STOCK' : 'IN_STOCK',
-      is_expired: med.expiry_date && new Date(med.expiry_date) < new Date(),
-      is_expiring_soon: med.expiry_date && new Date(med.expiry_date) <= new Date(Date.now() + 90 * 86400000) && new Date(med.expiry_date) >= new Date(),
-    }));
+    const formatted = medicines.map(med => {
+      const ppp = Math.max(1, parseInt(med.pieces_per_pack) || 1);
+      const sp = parseFloat(med.selling_price || 0);
+      const cp = parseFloat(med.cost_price || 0);
+      const usp = parseFloat(med.unit_selling_price) > 0 ? parseFloat(med.unit_selling_price) : parseFloat((sp / ppp).toFixed(2));
+      const ucp = parseFloat(med.unit_cost_price) > 0 ? parseFloat(med.unit_cost_price) : parseFloat((cp / ppp).toFixed(2));
+      
+      const stockFloat = parseFloat(med.stock_quantity || 0);
+      const totalLoose = Math.max(0, Math.round(stockFloat * ppp));
+      const fullPacks = Math.floor(totalLoose / ppp);
+      const remainingLoose = totalLoose % ppp;
+
+      return {
+        ...med,
+        pieces_per_pack: ppp,
+        unit_selling_price: usp,
+        unit_cost_price: ucp,
+        total_loose_units: totalLoose,
+        full_packs: fullPacks,
+        remaining_loose: remainingLoose,
+        stock_display: ppp > 1 
+          ? (remainingLoose > 0 ? `${fullPacks} Packs + ${remainingLoose} Loose (${totalLoose} units)` : `${fullPacks} Packs (${totalLoose} units)`)
+          : `${stockFloat} Units`,
+        stock_status: stockFloat <= 0 ? 'OUT_OF_STOCK' : stockFloat <= med.min_stock_alert ? 'LOW_STOCK' : 'IN_STOCK',
+        is_expired: med.expiry_date && new Date(med.expiry_date) < new Date(),
+        is_expiring_soon: med.expiry_date && new Date(med.expiry_date) <= new Date(Date.now() + 90 * 86400000) && new Date(med.expiry_date) >= new Date(),
+      };
+    });
 
     return res.json({ success: true, medicines: formatted });
   } catch (error) {
@@ -99,8 +121,8 @@ router.get('/:id', verifyToken, async (req, res) => {
 router.post('/', verifyToken, requireAdmin, async (req, res) => {
   try {
     const {
-      trade_name, generic_name, brand, dosage, strength, form, pack_size, unit,
-      manufacturer, category, barcode, cost_price, selling_price, wholesale_price,
+      trade_name, generic_name, brand, dosage, strength, form, pack_size, pieces_per_pack, unit,
+      manufacturer, category, barcode, cost_price, selling_price, unit_selling_price, unit_cost_price, wholesale_price,
       min_selling_price, tax_percent, stock_quantity, min_stock_alert,
       batch_number, expiry_date, mfg_date, rack_location, supplier_id,
       status, prescription_required, storage_notes, product_notes
@@ -116,16 +138,25 @@ router.post('/', verifyToken, requireAdmin, async (req, res) => {
     }
 
     const product_code = await generateProductCode();
+    const ppp = Math.max(1, parseInt(pieces_per_pack) || 1);
+    const sp = parseFloat(selling_price);
+    const cp = parseFloat(cost_price);
+    const usp = unit_selling_price !== undefined && unit_selling_price !== '' && parseFloat(unit_selling_price) > 0
+      ? parseFloat(unit_selling_price)
+      : parseFloat((sp / ppp).toFixed(2));
+    const ucp = unit_cost_price !== undefined && unit_cost_price !== '' && parseFloat(unit_cost_price) > 0
+      ? parseFloat(unit_cost_price)
+      : parseFloat((cp / ppp).toFixed(2));
 
     const result = await run(
-      `INSERT INTO medicines (product_code, trade_name, generic_name, brand, dosage, strength, form, pack_size, unit, manufacturer, category, barcode, cost_price, selling_price, wholesale_price, min_selling_price, tax_percent, stock_quantity, min_stock_alert, batch_number, expiry_date, mfg_date, rack_location, supplier_id, status, prescription_required, storage_notes, product_notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO medicines (product_code, trade_name, generic_name, brand, dosage, strength, form, pack_size, pieces_per_pack, unit, manufacturer, category, barcode, cost_price, selling_price, unit_selling_price, unit_cost_price, wholesale_price, min_selling_price, tax_percent, stock_quantity, min_stock_alert, batch_number, expiry_date, mfg_date, rack_location, supplier_id, status, prescription_required, storage_notes, product_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [product_code, trade_name.trim(), generic_name || null, brand || null, dosage || null, strength || null,
-       form || null, pack_size || null, unit || 'Pcs', manufacturer || null, category || null,
+       form || null, pack_size || `${ppp} ${form || 'Pcs'}/Pack`, ppp, unit || 'Pcs', manufacturer || null, category || null,
        barcode && barcode.trim() ? barcode.trim() : null,
-       parseFloat(cost_price), parseFloat(selling_price), parseFloat(wholesale_price || 0),
+       cp, sp, usp, ucp, parseFloat(wholesale_price || 0),
        parseFloat(min_selling_price || 0), parseFloat(tax_percent || 0),
-       parseInt(stock_quantity || 0), parseInt(min_stock_alert || 20),
+       parseFloat(stock_quantity || 0), parseInt(min_stock_alert || 20),
        batch_number || null, expiry_date || null, mfg_date || null,
        rack_location || null, supplier_id || null, status || 'active',
        prescription_required ? 1 : 0, storage_notes || null, product_notes || null]
@@ -147,8 +178,8 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
     if (!existing) return res.status(404).json({ success: false, message: 'Product not found.' });
 
     const {
-      trade_name, generic_name, brand, dosage, strength, form, pack_size, unit,
-      manufacturer, category, barcode, cost_price, selling_price, wholesale_price,
+      trade_name, generic_name, brand, dosage, strength, form, pack_size, pieces_per_pack, unit,
+      manufacturer, category, barcode, cost_price, selling_price, unit_selling_price, unit_cost_price, wholesale_price,
       min_selling_price, tax_percent, stock_quantity, min_stock_alert,
       batch_number, expiry_date, mfg_date, rack_location, supplier_id,
       status, prescription_required, storage_notes, product_notes
@@ -160,21 +191,31 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
       if (bc) return res.status(400).json({ success: false, message: `Barcode [${barcode}] already assigned to another product.` });
     }
 
+    const ppp = Math.max(1, parseInt(pieces_per_pack) || parseInt(existing.pieces_per_pack) || 1);
+    const sp = parseFloat(selling_price);
+    const cp = parseFloat(cost_price);
+    const usp = unit_selling_price !== undefined && unit_selling_price !== '' && parseFloat(unit_selling_price) > 0
+      ? parseFloat(unit_selling_price)
+      : parseFloat((sp / ppp).toFixed(2));
+    const ucp = unit_cost_price !== undefined && unit_cost_price !== '' && parseFloat(unit_cost_price) > 0
+      ? parseFloat(unit_cost_price)
+      : parseFloat((cp / ppp).toFixed(2));
+
     await run(
       `UPDATE medicines SET
-        trade_name=?, generic_name=?, brand=?, dosage=?, strength=?, form=?, pack_size=?, unit=?,
-        manufacturer=?, category=?, barcode=?, cost_price=?, selling_price=?, wholesale_price=?,
+        trade_name=?, generic_name=?, brand=?, dosage=?, strength=?, form=?, pack_size=?, pieces_per_pack=?, unit=?,
+        manufacturer=?, category=?, barcode=?, cost_price=?, selling_price=?, unit_selling_price=?, unit_cost_price=?, wholesale_price=?,
         min_selling_price=?, tax_percent=?, stock_quantity=?, min_stock_alert=?,
         batch_number=?, expiry_date=?, mfg_date=?, rack_location=?, supplier_id=?,
         status=?, prescription_required=?, storage_notes=?, product_notes=?,
         updated_at=CURRENT_TIMESTAMP
        WHERE id=?`,
       [trade_name, generic_name || null, brand || null, dosage || null, strength || null,
-       form || null, pack_size || null, unit || 'Pcs', manufacturer || null, category || null,
+       form || null, pack_size || `${ppp} ${form || 'Pcs'}/Pack`, ppp, unit || 'Pcs', manufacturer || null, category || null,
        barcode && barcode.trim() ? barcode.trim() : null,
-       parseFloat(cost_price), parseFloat(selling_price), parseFloat(wholesale_price || 0),
+       cp, sp, usp, ucp, parseFloat(wholesale_price || 0),
        parseFloat(min_selling_price || 0), parseFloat(tax_percent || 0),
-       parseInt(stock_quantity), parseInt(min_stock_alert || 20),
+       parseFloat(stock_quantity), parseInt(min_stock_alert || 20),
        batch_number || null, expiry_date || null, mfg_date || null,
        rack_location || null, supplier_id || null, status || 'active',
        prescription_required ? 1 : 0, storage_notes || null, product_notes || null, id]

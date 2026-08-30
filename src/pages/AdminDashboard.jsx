@@ -195,6 +195,9 @@ export default function AdminDashboard() {
     barcode: '',
     cost_price: '',
     selling_price: '',
+    pieces_per_pack: 30,
+    unit_selling_price: '',
+    unit_cost_price: '',
     wholesale_price: '',
     stock_quantity: 50,
     min_stock_alert: 20,
@@ -847,7 +850,8 @@ export default function AdminDashboard() {
                   setFormData({
                     trade_name: '', generic_name: '', brand: '', dosage: '', form: 'Tablet',
                     manufacturer: '', category: 'Tablet', barcode: '', cost_price: '',
-                    selling_price: '', wholesale_price: '', stock_quantity: 50, min_stock_alert: 20,
+                    selling_price: '', pieces_per_pack: 30, unit_selling_price: '', unit_cost_price: '',
+                    wholesale_price: '', stock_quantity: 50, min_stock_alert: 20,
                     batch_number: 'BATCH-' + Date.now().toString().slice(-4), expiry_date: '2028-12-31',
                     rack_location: 'Rack A-01', status: 'active',
                   });
@@ -1008,10 +1012,10 @@ export default function AdminDashboard() {
               <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase border-b border-slate-800">
                 <tr>
                   <th className="py-3 px-4">SKU / Barcode</th>
-                  <th className="py-3 px-3">Product Name</th>
-                  <th className="py-3 px-3">Cost (Rs.)</th>
-                  <th className="py-3 px-3">Selling (Rs.)</th>
-                  <th className="py-3 px-3">Stock Units</th>
+                  <th className="py-3 px-3">Product Name & Pack Size</th>
+                  <th className="py-3 px-3">Cost Price</th>
+                  <th className="py-3 px-3">Selling Price</th>
+                  <th className="py-3 px-3">Stock (Packs + Loose)</th>
                   <th className="py-3 px-3">Batch & Expiry</th>
                   <th className="py-3 px-3">Rack</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -1046,6 +1050,9 @@ export default function AdminDashboard() {
                     const diffDays = exp ? Math.ceil((exp - now) / (1000 * 60 * 60 * 24)) : null;
                     const isExpired = diffDays !== null && diffDays < 0;
                     const isExpiringSoon = diffDays !== null && diffDays >= 0 && diffDays <= 90;
+                    const ppp = Math.max(1, parseInt(med.pieces_per_pack) || 1);
+                    const usp = parseFloat(med.unit_selling_price) > 0 ? parseFloat(med.unit_selling_price) : (parseFloat(med.selling_price || 0) / ppp);
+                    const ucp = parseFloat(med.unit_cost_price) > 0 ? parseFloat(med.unit_cost_price) : (parseFloat(med.cost_price || 0) / ppp);
 
                     return (
                       <tr key={med.id} className="hover:bg-slate-800/40 transition">
@@ -1054,17 +1061,41 @@ export default function AdminDashboard() {
                           {med.barcode && <div className="text-[10px] text-slate-400 mt-0.5">{med.barcode}</div>}
                         </td>
                         <td className="py-3 px-3 font-semibold text-white">
-                          {med.trade_name}
+                          <div className="flex items-center gap-1.5">
+                            <span>{med.trade_name}</span>
+                            {ppp > 1 && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                                {ppp} {med.form || 'units'}/pk
+                              </span>
+                            )}
+                          </div>
                           <span className="block text-[10px] text-slate-400">{med.generic_name || med.brand || ''}</span>
                         </td>
-                        <td className="py-3 px-3 font-mono">Rs. {parseFloat(med.cost_price || 0).toFixed(2)}</td>
-                        <td className="py-3 px-3 font-mono font-bold text-emerald-400">Rs. {parseFloat(med.selling_price || 0).toFixed(2)}</td>
+                        <td className="py-3 px-3 font-mono">
+                          <div className="text-white font-medium">Rs. {parseFloat(med.cost_price || 0).toFixed(2)} <span className="text-[10px] text-slate-500">/pk</span></div>
+                          {ppp > 1 && (
+                            <div className="text-[10px] text-slate-400">Rs. {ucp.toFixed(2)} /unit</div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-mono">
+                          <div className="font-bold text-emerald-400">Rs. {parseFloat(med.selling_price || 0).toFixed(2)} <span className="text-[10px] text-emerald-600 font-normal">/pk</span></div>
+                          {ppp > 1 && (
+                            <div className="text-[10px] text-teal-300 font-bold">Rs. {usp.toFixed(2)} /unit</div>
+                          )}
+                        </td>
                         <td className="py-3 px-3">
-                          <span className={`px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
-                            med.stock_quantity <= 0 ? 'bg-rose-500/20 text-rose-300' : med.stock_quantity <= med.min_stock_alert ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
-                          }`}>
-                            {med.stock_quantity <= 0 ? 'Out of Stock (0)' : med.stock_quantity <= med.min_stock_alert ? `Low (${med.stock_quantity})` : `${med.stock_quantity} units`}
-                          </span>
+                          <div className="space-y-0.5">
+                            <span className={`px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 text-xs ${
+                              med.stock_quantity <= 0 ? 'bg-rose-500/20 text-rose-300' : med.stock_quantity <= med.min_stock_alert ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                            }`}>
+                              {med.stock_quantity <= 0 ? 'Out of Stock (0)' : med.stock_quantity <= med.min_stock_alert ? `Low (${med.stock_display || med.stock_quantity})` : (med.stock_display || `${med.stock_quantity} Packs`)}
+                            </span>
+                            {ppp > 1 && med.stock_quantity > 0 && (
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                Total: {med.total_loose_units || Math.round(med.stock_quantity * ppp)} loose units
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
                           <div>Batch: {med.batch_number || 'N/A'}</div>
@@ -1087,7 +1118,12 @@ export default function AdminDashboard() {
                           <button
                             onClick={() => {
                               setEditingMed(med);
-                              setFormData({ ...med });
+                              setFormData({
+                                ...med,
+                                pieces_per_pack: med.pieces_per_pack || 1,
+                                unit_selling_price: med.unit_selling_price || '',
+                                unit_cost_price: med.unit_cost_price || '',
+                              });
                               setIsMedModalOpen(true);
                             }}
                             className="p-1.5 text-slate-400 hover:text-teal-300 transition mr-1"
@@ -2375,7 +2411,7 @@ export default function AdminDashboard() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-400">Cost Price (Rs.) *</label>
+                  <label className="text-[11px] font-semibold text-slate-400">Cost Price / Pack (Rs.) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -2386,7 +2422,7 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-400">Selling Price (Rs.) *</label>
+                  <label className="text-[11px] font-semibold text-slate-400">Selling Price / Pack (Rs.) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -2397,7 +2433,7 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-400">Stock Quantity</label>
+                  <label className="text-[11px] font-semibold text-slate-400">Stock Quantity (Packs)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -2405,6 +2441,74 @@ export default function AdminDashboard() {
                     onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
                   />
+                </div>
+              </div>
+
+              {/* ── Packaging & Loose Unit Dispensing Formulas ── */}
+              <div className="p-3.5 rounded-2xl bg-teal-500/10 border border-teal-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                    <Pill className="w-3.5 h-3.5" />
+                    Packaging Unit & Loose Dispensing Configuration
+                  </span>
+                  <span className="text-[10px] text-slate-400">Auto-Calculates Per-Capsule Rates</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-300">
+                      Pieces in 1 Pack (Capsules/Tabs) *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="e.g. 30"
+                      value={formData.pieces_per_pack || ''}
+                      onChange={(e) => setFormData({ ...formData, pieces_per_pack: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-teal-500/40 text-xs text-white focus:outline-none focus:border-teal-400 font-mono font-bold"
+                    />
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">e.g. 30 caps per packet</span>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-300">
+                      Price per 1 Unit / Capsule (Rs.)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder={formData.selling_price && formData.pieces_per_pack ? (parseFloat(formData.selling_price) / Math.max(1, parseInt(formData.pieces_per_pack))).toFixed(2) : '0.00'}
+                      value={formData.unit_selling_price || ''}
+                      onChange={(e) => setFormData({ ...formData, unit_selling_price: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-teal-300 focus:outline-none focus:border-teal-500 font-mono font-bold"
+                    />
+                    <span className="text-[9px] text-teal-400/80 mt-0.5 block">Auto: Rs. {(parseFloat(formData.selling_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1))).toFixed(2)} /unit</span>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-300">
+                      Cost per 1 Unit / Capsule (Rs.)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder={formData.cost_price && formData.pieces_per_pack ? (parseFloat(formData.cost_price) / Math.max(1, parseInt(formData.pieces_per_pack))).toFixed(2) : '0.00'}
+                      value={formData.unit_cost_price || ''}
+                      onChange={(e) => setFormData({ ...formData, unit_cost_price: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-300 focus:outline-none focus:border-teal-500 font-mono"
+                    />
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">Auto: Rs. {(parseFloat(formData.cost_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1))).toFixed(2)} /unit</span>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between font-mono">
+                  <span>
+                    💡 <strong className="text-white">{formData.pieces_per_pack || 1} {formData.form || 'units'}</strong> in 1 Pack @ <strong className="text-emerald-400">Rs. {parseFloat(formData.selling_price || 0).toFixed(2)}</strong>
+                  </span>
+                  <span className="text-teal-300 font-bold">
+                    = Rs. {(parseFloat(formData.unit_selling_price) > 0 ? parseFloat(formData.unit_selling_price) : (parseFloat(formData.selling_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1)))).toFixed(2)} / {formData.form || 'capsule'}
+                  </span>
                 </div>
               </div>
 

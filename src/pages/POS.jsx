@@ -259,8 +259,8 @@ export default function POS() {
     }
   };
 
-  // 4. Cart Operations (Supporting Fractional Quantities: 1, 0.5, 0.33, 0.25, etc.)
-  const addToCart = (medicine, initialQty = 1) => {
+  // 4. Cart Operations (Supporting Packs & Loose Unit Dispensing like 1 Capsule/Tablet)
+  const addToCart = (medicine, initialQty = 1, unitMode = 'pack') => {
     // 1. Expiration Safety Check
     if (medicine.expiry_date) {
       const expDate = new Date(medicine.expiry_date);
@@ -271,38 +271,87 @@ export default function POS() {
       }
     }
 
+    const ppp = Math.max(1, parseInt(medicine.pieces_per_pack) || 1);
+    const isPiece = unitMode === 'piece' || unitMode === 'loose';
+    const totalLoose = Math.round(parseFloat(medicine.stock_quantity || 0) * ppp);
+
     // 2. Stock Out Check
-    if (medicine.stock_quantity <= 0) {
+    if (totalLoose <= 0) {
       showToast(`Cannot add [${medicine.trade_name}] - Item is Out of Stock!`, 'error');
       return;
     }
 
     setCart((prevCart) => {
-      const existing = prevCart.find((item) => item.id === medicine.id);
-      if (existing) {
-        const newQty = existing.quantity + initialQty;
-        if (newQty > medicine.stock_quantity) {
-          showToast(`Stock limit reached (${medicine.stock_quantity} available)`, 'error');
+      const itemKey = `${medicine.id}_${isPiece ? 'piece' : 'pack'}`;
+      const existingIdx = prevCart.findIndex(
+        (item) => (item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`) === itemKey
+      );
+
+      const unitPrice = parseFloat(medicine.unit_selling_price) > 0
+        ? parseFloat(medicine.unit_selling_price)
+        : parseFloat((parseFloat(medicine.selling_price || 0) / ppp).toFixed(2));
+
+      if (existingIdx >= 0) {
+        const existing = prevCart[existingIdx];
+        const newQty = parseFloat((existing.quantity + initialQty).toFixed(3));
+        const maxLimit = isPiece ? totalLoose : parseFloat(medicine.stock_quantity);
+        if (newQty > maxLimit) {
+          showToast(`Stock limit reached (${isPiece ? `${totalLoose} loose units` : `${medicine.stock_quantity} packs`} available)`, 'error');
           return prevCart;
         }
-        return prevCart.map((item) =>
-          item.id === medicine.id ? { ...item, quantity: parseFloat(newQty.toFixed(3)) } : item
+        return prevCart.map((item, idx) =>
+          idx === existingIdx ? { ...item, quantity: newQty } : item
         );
       }
-      return [...prevCart, { ...medicine, quantity: initialQty }];
+
+      return [
+        ...prevCart,
+        {
+          ...medicine,
+          cart_key: itemKey,
+          sale_unit: isPiece ? 'piece' : 'pack',
+          pieces_per_pack: ppp,
+          unit_selling_price: unitPrice,
+          unit_cost_price: parseFloat(medicine.unit_cost_price) > 0 ? parseFloat(medicine.unit_cost_price) : parseFloat((parseFloat(medicine.cost_price || 0) / ppp).toFixed(2)),
+          quantity: initialQty,
+        }
+      ];
     });
   };
 
-  const setItemExactQty = (id, exactQty) => {
+  const toggleItemUnit = (cartKey, targetUnit) => {
+    setCart((prevCart) =>
+      prevCart.map((item) => {
+        const key = item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`;
+        if (key === cartKey) {
+          const isTargetPiece = targetUnit === 'piece';
+          const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+          return {
+            ...item,
+            cart_key: `${item.id}_${isTargetPiece ? 'piece' : 'pack'}`,
+            sale_unit: isTargetPiece ? 'piece' : 'pack',
+            quantity: 1,
+          };
+        }
+        return item;
+      })
+    );
+  };
+
+  const setItemExactQty = (cartKey, exactQty) => {
     const qty = parseFloat(exactQty);
     if (isNaN(qty) || qty <= 0) return;
 
     setCart((prevCart) =>
       prevCart.map((item) => {
-        if (item.id === id) {
-          if (qty > item.stock_quantity) {
-            showToast(`Max stock is ${item.stock_quantity}`, 'error');
-            return { ...item, quantity: item.stock_quantity };
+        const key = item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`;
+        if (key === cartKey) {
+          const isPiece = item.sale_unit === 'piece';
+          const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+          const maxLimit = isPiece ? Math.round(parseFloat(item.stock_quantity || 0) * ppp) : parseFloat(item.stock_quantity || 0);
+          if (qty > maxLimit) {
+            showToast(`Max stock is ${maxLimit} ${isPiece ? 'loose units' : 'packs'}`, 'error');
+            return { ...item, quantity: maxLimit };
           }
           return { ...item, quantity: parseFloat(qty.toFixed(3)) };
         }
@@ -311,14 +360,18 @@ export default function POS() {
     );
   };
 
-  const updateQuantityDelta = (id, delta) => {
+  const updateQuantityDelta = (cartKey, delta) => {
     setCart((prevCart) =>
       prevCart
         .map((item) => {
-          if (item.id === id) {
+          const key = item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`;
+          if (key === cartKey) {
+            const isPiece = item.sale_unit === 'piece';
+            const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+            const maxLimit = isPiece ? Math.round(parseFloat(item.stock_quantity || 0) * ppp) : parseFloat(item.stock_quantity || 0);
             const newQty = parseFloat((item.quantity + delta).toFixed(3));
-            if (newQty > item.stock_quantity) {
-              showToast(`Stock limit reached (${item.stock_quantity} available)`, 'error');
+            if (newQty > maxLimit) {
+              showToast(`Stock limit reached (${maxLimit} ${isPiece ? 'loose units' : 'packs'} available)`, 'error');
               return item;
             }
             return newQty > 0 ? { ...item, quantity: newQty } : null;
@@ -329,8 +382,8 @@ export default function POS() {
     );
   };
 
-  const removeFromCart = (id) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== id));
+  const removeFromCart = (cartKey) => {
+    setCart((prevCart) => prevCart.filter((item) => (item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`) !== cartKey));
   };
 
   const clearCart = () => {
@@ -386,8 +439,18 @@ export default function POS() {
     }
   };
 
+  const getItemPrice = (item) => {
+    const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+    if (item.sale_unit === 'piece' || item.sale_unit === 'loose') {
+      return parseFloat(item.unit_selling_price) > 0
+        ? parseFloat(item.unit_selling_price)
+        : parseFloat((parseFloat(item.selling_price || 0) / ppp).toFixed(2));
+    }
+    return parseFloat(item.selling_price || 0);
+  };
+
   // Totals Computation
-  const subtotal = cart.reduce((sum, item) => sum + item.selling_price * item.quantity, 0);
+  const subtotal = cart.reduce((sum, item) => sum + getItemPrice(item) * item.quantity, 0);
   const calculatedDiscount =
     discountType === 'percent'
       ? (subtotal * parseFloat(discount || 0)) / 100
@@ -403,6 +466,22 @@ export default function POS() {
 
     try {
       setCheckoutLoading(true);
+      const itemsPayload = cart.map((item) => {
+        const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+        const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+        const unitPrice = isPiece
+          ? (parseFloat(item.unit_selling_price) > 0 ? parseFloat(item.unit_selling_price) : parseFloat((parseFloat(item.selling_price || 0) / ppp).toFixed(2)))
+          : parseFloat(item.selling_price || 0);
+
+        return {
+          ...item,
+          sale_unit: isPiece ? 'piece' : 'pack',
+          pieces_per_pack: ppp,
+          unit_price: unitPrice,
+          quantity: item.quantity,
+        };
+      });
+
       const res = await fetch('/api/sales', {
         method: 'POST',
         headers: {
@@ -410,7 +489,7 @@ export default function POS() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          items: cart,
+          items: itemsPayload,
           customer_id: selectedCustomerId ? parseInt(selectedCustomerId) : null,
           customer_name: customerName,
           discount: calculatedDiscount,
@@ -599,9 +678,16 @@ export default function POS() {
                             <span>{med.rack_location || 'N/A'}</span>
                           </div>
                         </td>
-
-                        <td className="py-3 px-3 font-mono font-bold text-sm text-white">
-                          Rs. {parseFloat(med.selling_price || 0).toFixed(2)}
+                        <td className="py-3 px-3 font-mono">
+                          <div className="font-bold text-sm text-white">
+                            Rs. {parseFloat(med.selling_price || 0).toFixed(2)} <span className="text-[10px] text-slate-400 font-normal">/pk</span>
+                          </div>
+                          {med.pieces_per_pack > 1 && (
+                            <div className="text-[10px] text-teal-300 font-bold mt-0.5">
+                              Rs. {parseFloat(med.unit_selling_price || (med.selling_price / med.pieces_per_pack)).toFixed(2)} / {med.form?.toLowerCase() || 'cap'}
+                              <span className="text-[9px] text-slate-400 font-normal ml-1">({med.pieces_per_pack}/pk)</span>
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-3 px-3">
@@ -615,12 +701,12 @@ export default function POS() {
                             ) : med.stock_quantity <= med.min_stock_alert ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
                                 <AlertTriangle className="w-3 h-3" />
-                                Low: {med.stock_quantity} left
+                                Low: {med.stock_display || `${med.stock_quantity} left`}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                                 <CheckCircle className="w-3 h-3" />
-                                {med.stock_quantity} in Stock
+                                {med.stock_display || `${med.stock_quantity} in Stock`}
                               </span>
                             )}
 
@@ -655,28 +741,42 @@ export default function POS() {
                           ) : (
                             <div className="flex items-center justify-end gap-1.5">
                               <button
-                                onClick={() => addToCart(med, 1)}
+                                onClick={() => addToCart(med, 1, 'pack')}
                                 disabled={med.stock_quantity <= 0}
                                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
                                   med.stock_quantity <= 0
                                     ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                     : 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-sm active:scale-95'
                                 }`}
-                                title="Add 1 full unit"
+                                title="Add 1 Full Pack"
                               >
-                                +1 Full
+                                +1 Pack
                               </button>
+                              {med.pieces_per_pack > 1 && (
+                                <button
+                                  onClick={() => addToCart(med, 1, 'piece')}
+                                  disabled={med.stock_quantity <= 0}
+                                  className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
+                                    med.stock_quantity <= 0
+                                      ? 'border-slate-800 text-slate-600 cursor-not-allowed'
+                                      : 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500 hover:text-slate-950 active:scale-95'
+                                  }`}
+                                  title={`Add 1 Loose ${med.form || 'Capsule/Tablet'} at unit rate`}
+                                >
+                                  +1 {med.form === 'Capsule' ? 'Cap' : med.form === 'Tablet' ? 'Tab' : 'Unit'}
+                                </button>
+                              )}
                               <button
-                                onClick={() => addToCart(med, 0.5)}
+                                onClick={() => addToCart(med, 0.5, 'pack')}
                                 disabled={med.stock_quantity < 0.5}
                                 className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
                                   med.stock_quantity < 0.5
                                     ? 'border-slate-800 text-slate-600 cursor-not-allowed'
                                     : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-slate-950 active:scale-95'
                                 }`}
-                                title="Add Half (0.5) unit / strip / pack"
+                                title="Add Half (0.5) pack"
                               >
-                                +½
+                                +½ Pk
                               </button>
                             </div>
                           )}
@@ -766,81 +866,149 @@ export default function POS() {
                     <p className="text-xs">Scan or click medicines on left to bill</p>
                   </div>
                 ) : (
-                  cart.map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 space-y-2 shadow-md"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-xs text-white truncate">{item.trade_name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            Unit: Rs. {item.selling_price.toFixed(2)} | Avail: {item.stock_quantity}
+                  cart.map((item) => {
+                    const itemKey = item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`;
+                    const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+                    const isPiece = item.sale_unit === 'piece';
+                    const itemPrice = getItemPrice(item);
+                    const totalItemCost = itemPrice * item.quantity;
+                    const totalLooseAvail = Math.round(parseFloat(item.stock_quantity || 0) * ppp);
+
+                    return (
+                      <div
+                        key={itemKey}
+                        className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 space-y-2.5 shadow-md"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-xs text-white truncate">{item.trade_name}</span>
+                              {ppp > 1 && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-800 text-teal-300 border border-slate-700">
+                                  {ppp} {item.form || 'units'}/pk
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              Rate: <strong className="text-slate-200">Rs. {itemPrice.toFixed(2)}</strong> / {isPiece ? (item.form?.toLowerCase() || 'cap') : 'pack'}
+                              {' • '}Avail: {isPiece ? `${totalLooseAvail} units` : `${item.stock_quantity} pk`}
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="font-mono font-extrabold text-sm text-emerald-400">
+                              Rs. {totalItemCost.toFixed(2)}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(itemKey)}
+                              className="text-[10px] text-rose-400 hover:text-rose-300 inline-flex items-center gap-0.5 mt-0.5"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Remove
+                            </button>
                           </div>
                         </div>
 
-                        <div className="text-right">
-                          <div className="font-mono font-bold text-xs text-emerald-400">
-                            Rs. {(item.selling_price * item.quantity).toFixed(2)}
+                        {/* Mode Switcher: Full Pack vs Loose Capsule/Tablet */}
+                        {ppp > 1 && (
+                          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 w-full">
+                            <button
+                              type="button"
+                              onClick={() => toggleItemUnit(itemKey, 'pack')}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${
+                                !isPiece
+                                  ? 'bg-teal-500 text-slate-950 shadow-md'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <span>📦 Full Pack (Rs. {parseFloat(item.selling_price || 0).toFixed(2)})</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleItemUnit(itemKey, 'piece')}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${
+                                isPiece
+                                  ? 'bg-gradient-to-r from-sky-500 to-teal-400 text-slate-950 shadow-md'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <span>💊 Loose {item.form || 'Capsule'} (Rs. {parseFloat(item.unit_selling_price || (item.selling_price / ppp)).toFixed(2)})</span>
+                            </button>
                           </div>
-                          <button
-                            onClick={() => removeFromCart(item.id)}
-                            className="text-[10px] text-rose-400 hover:text-rose-300 inline-flex items-center gap-0.5 mt-0.5"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Remove
-                          </button>
+                        )}
+
+                        {/* Quick Quantity Presets */}
+                        <div className="flex flex-wrap items-center gap-1 pt-0.5 border-t border-slate-800/80">
+                          {isPiece ? (
+                            [1, 2, 3, 5, 10, 15, 20, 30].map((qtyVal) => (
+                              <button
+                                key={qtyVal}
+                                type="button"
+                                onClick={() => setItemExactQty(itemKey, qtyVal)}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
+                                  Math.abs(item.quantity - qtyVal) < 0.01
+                                    ? 'bg-sky-500 text-slate-950 shadow-sm'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                {qtyVal} {item.form === 'Capsule' ? 'Cap' : item.form === 'Tablet' ? 'Tab' : 'Unit'}{qtyVal > 1 ? 's' : ''}
+                              </button>
+                            ))
+                          ) : (
+                            FRACTION_PRESETS.map((preset) => (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => setItemExactQty(itemKey, preset.value)}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
+                                  Math.abs(item.quantity - preset.value) < 0.01
+                                    ? 'bg-teal-500 text-slate-950 shadow-sm'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Stepper & Numeric Input */}
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[10px] text-slate-400 font-semibold">
+                            {isPiece ? `Dispense Count (${item.form || 'Capsules'}):` : 'Quantity (Packs):'}
+                          </span>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantityDelta(itemKey, isPiece ? -1 : -0.5)}
+                              className="p-1 text-slate-400 hover:text-white transition"
+                              title={isPiece ? "-1 unit" : "-0.5 pack"}
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <input
+                              type="number"
+                              step={isPiece ? "1" : "0.01"}
+                              min="0.01"
+                              max={isPiece ? totalLooseAvail : item.stock_quantity}
+                              value={item.quantity}
+                              onChange={(e) => setItemExactQty(itemKey, e.target.value)}
+                              className="w-14 text-center bg-transparent font-mono text-xs font-bold text-teal-300 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateQuantityDelta(itemKey, isPiece ? 1 : 0.5)}
+                              className="p-1 text-slate-400 hover:text-white transition"
+                              title={isPiece ? "+1 unit" : "+0.5 pack"}
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       </div>
-
-                      {/* Fractional Quantity Selection Pills */}
-                      <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-slate-800/80">
-                        {FRACTION_PRESETS.map((preset) => (
-                          <button
-                            key={preset.label}
-                            onClick={() => setItemExactQty(item.id, preset.value)}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
-                              Math.abs(item.quantity - preset.value) < 0.01
-                                ? 'bg-teal-500 text-slate-950 shadow-sm'
-                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                            }`}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Precise Stepper & Direct Numeric Input */}
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[10px] text-slate-400 font-semibold">Qty (Units/Fraction):</span>
-                        <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
-                          <button
-                            onClick={() => updateQuantityDelta(item.id, -0.5)}
-                            className="p-1 text-slate-400 hover:text-white transition"
-                            title="-0.5"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            max={item.stock_quantity}
-                            value={item.quantity}
-                            onChange={(e) => setItemExactQty(item.id, e.target.value)}
-                            className="w-14 text-center bg-transparent font-mono text-xs font-bold text-teal-300 focus:outline-none"
-                          />
-                          <button
-                            onClick={() => updateQuantityDelta(item.id, 0.5)}
-                            className="p-1 text-slate-400 hover:text-white transition"
-                            title="+0.5"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

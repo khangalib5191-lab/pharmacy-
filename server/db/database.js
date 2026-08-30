@@ -221,7 +221,9 @@ export async function initDatabase() {
         await addIfMissing('status', "TEXT DEFAULT 'active'");
         await addIfMissing('prescription_required', 'INTEGER DEFAULT 0');
         await addIfMissing('storage_notes', 'TEXT');
-        await addIfMissing('product_notes', 'TEXT');
+        await addIfMissing('pieces_per_pack', 'INTEGER DEFAULT 1');
+        await addIfMissing('unit_selling_price', 'REAL DEFAULT 0');
+        await addIfMissing('unit_cost_price', 'REAL DEFAULT 0');
         await addIfMissing('generic_name', 'TEXT');
       }
     } else {
@@ -236,16 +238,19 @@ export async function initDatabase() {
           strength TEXT,
           form TEXT,
           pack_size TEXT,
+          pieces_per_pack INTEGER NOT NULL DEFAULT 1,
           unit TEXT DEFAULT 'Pcs',
           manufacturer TEXT,
           category TEXT,
           barcode TEXT UNIQUE,
           cost_price REAL NOT NULL DEFAULT 0,
           selling_price REAL NOT NULL DEFAULT 0,
+          unit_selling_price REAL DEFAULT 0,
+          unit_cost_price REAL DEFAULT 0,
           wholesale_price REAL DEFAULT 0,
           min_selling_price REAL DEFAULT 0,
           tax_percent REAL DEFAULT 0,
-          stock_quantity INTEGER NOT NULL DEFAULT 0,
+          stock_quantity REAL NOT NULL DEFAULT 0,
           min_stock_alert INTEGER NOT NULL DEFAULT 20,
           batch_number TEXT,
           expiry_date DATE,
@@ -540,6 +545,8 @@ export async function initDatabase() {
     if (!siCols.includes('batch_id')) await run(`ALTER TABLE sale_items ADD COLUMN batch_id INTEGER REFERENCES batches(id)`);
     if (!siCols.includes('batch_number')) await run(`ALTER TABLE sale_items ADD COLUMN batch_number TEXT`);
     if (!siCols.includes('discount')) await run(`ALTER TABLE sale_items ADD COLUMN discount REAL DEFAULT 0`);
+    if (!siCols.includes('sale_unit')) await run(`ALTER TABLE sale_items ADD COLUMN sale_unit TEXT DEFAULT 'pack'`);
+    if (!siCols.includes('pieces_per_pack')) await run(`ALTER TABLE sale_items ADD COLUMN pieces_per_pack INTEGER DEFAULT 1`);
 
     await run(`
       CREATE TABLE IF NOT EXISTS sale_items (
@@ -550,7 +557,9 @@ export async function initDatabase() {
         batch_number TEXT,
         trade_name TEXT NOT NULL,
         dosage TEXT,
-        quantity INTEGER NOT NULL,
+        sale_unit TEXT DEFAULT 'pack',
+        pieces_per_pack INTEGER DEFAULT 1,
+        quantity REAL NOT NULL,
         unit_price REAL NOT NULL,
         cost_price REAL DEFAULT 0,
         discount REAL DEFAULT 0,
