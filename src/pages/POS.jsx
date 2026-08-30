@@ -31,14 +31,7 @@ import {
 import ReceiptModal from '../components/ReceiptModal';
 import CameraScannerModal from '../components/CameraScannerModal';
 
-const FRACTION_PRESETS = [
-  { label: 'Full', value: 1 },
-  { label: '½ Half', value: 0.5 },
-  { label: '⅓ (1/3)', value: 0.333 },
-  { label: '¼ (1/4)', value: 0.25 },
-  { label: '⅕ (1/5)', value: 0.2 },
-  { label: '⅙ (1/6)', value: 0.167 },
-];
+const PACK_PRESETS = [1, 2, 3, 5, 10];
 
 export default function POS() {
   const { token, user, showToast } = useAuth();
@@ -743,7 +736,7 @@ export default function POS() {
                               <button
                                 onClick={() => addToCart(med, 1, 'pack')}
                                 disabled={med.stock_quantity <= 0}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
                                   med.stock_quantity <= 0
                                     ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                     : 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-sm active:scale-95'
@@ -756,28 +749,16 @@ export default function POS() {
                                 <button
                                   onClick={() => addToCart(med, 1, 'piece')}
                                   disabled={med.stock_quantity <= 0}
-                                  className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
+                                  className={`px-3 py-1 rounded-lg text-xs font-bold border transition ${
                                     med.stock_quantity <= 0
                                       ? 'border-slate-800 text-slate-600 cursor-not-allowed'
                                       : 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500 hover:text-slate-950 active:scale-95'
                                   }`}
-                                  title={`Add 1 Loose ${med.form || 'Capsule/Tablet'} at unit rate`}
+                                  title={`Add Loose ${med.form || 'Capsule/Tablet'} (you can type exact units in cart)`}
                                 >
-                                  +1 {med.form === 'Capsule' ? 'Cap' : med.form === 'Tablet' ? 'Tab' : 'Unit'}
+                                  + Loose {med.form === 'Capsule' ? 'Caps' : med.form === 'Tablet' ? 'Tabs' : 'Units'}
                                 </button>
                               )}
-                              <button
-                                onClick={() => addToCart(med, 0.5, 'pack')}
-                                disabled={med.stock_quantity < 0.5}
-                                className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
-                                  med.stock_quantity < 0.5
-                                    ? 'border-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500 hover:text-slate-950 active:scale-95'
-                                }`}
-                                title="Add Half (0.5) pack"
-                              >
-                                +½ Pk
-                              </button>
                             </div>
                           )}
                         </td>
@@ -938,74 +919,130 @@ export default function POS() {
                           </div>
                         )}
 
-                        {/* Quick Quantity Presets */}
-                        <div className="flex flex-wrap items-center gap-1 pt-0.5 border-t border-slate-800/80">
-                          {isPiece ? (
-                            [1, 2, 3, 5, 10, 15, 20, 30].map((qtyVal) => (
-                              <button
-                                key={qtyVal}
-                                type="button"
-                                onClick={() => setItemExactQty(itemKey, qtyVal)}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
-                                  Math.abs(item.quantity - qtyVal) < 0.01
-                                    ? 'bg-sky-500 text-slate-950 shadow-sm'
-                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                }`}
-                              >
-                                {qtyVal} {item.form === 'Capsule' ? 'Cap' : item.form === 'Tablet' ? 'Tab' : 'Unit'}{qtyVal > 1 ? 's' : ''}
-                              </button>
-                            ))
-                          ) : (
-                            FRACTION_PRESETS.map((preset) => (
-                              <button
-                                key={preset.label}
-                                type="button"
-                                onClick={() => setItemExactQty(itemKey, preset.value)}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
-                                  Math.abs(item.quantity - preset.value) < 0.01
-                                    ? 'bg-teal-500 text-slate-950 shadow-sm'
-                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                }`}
-                              >
-                                {preset.label}
-                              </button>
-                            ))
-                          )}
-                        </div>
+                        {/* Direct Unit / Pack Dispensing Input */}
+                        {isPiece ? (
+                          <div className="p-2.5 rounded-xl bg-slate-950/80 border border-sky-500/30 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-sky-300 flex items-center gap-1">
+                                <Pill className="w-3.5 h-3.5" />
+                                Type Loose Units to Sell ({item.form || 'Capsules'}):
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Pack of {ppp} units
+                              </span>
+                            </div>
 
-                        {/* Stepper & Numeric Input */}
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-[10px] text-slate-400 font-semibold">
-                            {isPiece ? `Dispense Count (${item.form || 'Capsules'}):` : 'Quantity (Packs):'}
-                          </span>
-                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
-                            <button
-                              type="button"
-                              onClick={() => updateQuantityDelta(itemKey, isPiece ? -1 : -0.5)}
-                              className="p-1 text-slate-400 hover:text-white transition"
-                              title={isPiece ? "-1 unit" : "-0.5 pack"}
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <input
-                              type="number"
-                              step={isPiece ? "1" : "0.01"}
-                              min="0.01"
-                              max={isPiece ? totalLooseAvail : item.stock_quantity}
-                              value={item.quantity}
-                              onChange={(e) => setItemExactQty(itemKey, e.target.value)}
-                              className="w-14 text-center bg-transparent font-mono text-xs font-bold text-teal-300 focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => updateQuantityDelta(itemKey, isPiece ? 1 : 0.5)}
-                              className="p-1 text-slate-400 hover:text-white transition"
-                              title={isPiece ? "+1 unit" : "+0.5 pack"}
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantityDelta(itemKey, -1)}
+                                className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center transition border border-slate-700 active:scale-95"
+                                title="Decrease 1 unit"
+                              >
+                                <Minus className="w-4 h-4" />
+                              </button>
+                              <div className="flex-1 relative">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={totalLooseAvail}
+                                  value={item.quantity}
+                                  onChange={(e) => setItemExactQty(itemKey, e.target.value)}
+                                  placeholder="e.g. 6"
+                                  className="w-full py-1.5 px-3 text-center bg-slate-900 border-2 border-sky-500/60 focus:border-sky-400 rounded-lg font-mono text-base font-extrabold text-sky-300 focus:outline-none shadow-inner"
+                                />
+                                <span className="absolute right-2.5 top-2 text-[10px] text-slate-500 font-medium pointer-events-none">
+                                  units
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantityDelta(itemKey, 1)}
+                                className="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center transition border border-slate-700 active:scale-95"
+                                title="Increase 1 unit"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Quick Units Presets (e.g. 1, 2, 4, 6, 10) */}
+                            <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                              {[1, 2, 4, 6, 10, 15, 20, 30].filter(n => n <= totalLooseAvail).map((qtyVal) => (
+                                <button
+                                  key={qtyVal}
+                                  type="button"
+                                  onClick={() => setItemExactQty(itemKey, qtyVal)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                    Math.abs(item.quantity - qtyVal) < 0.01
+                                      ? 'bg-sky-500 text-slate-950 shadow-sm'
+                                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {qtyVal} {item.form === 'Capsule' ? 'Caps' : item.form === 'Tablet' ? 'Tabs' : 'Units'}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Live Formula Calculation Breakdown */}
+                            <div className="text-[11px] text-slate-200 bg-sky-950/40 p-2 rounded-lg border border-sky-500/20 font-mono">
+                              💡 <strong>{item.quantity} {item.form || 'units'}</strong> × Rs. {itemPrice.toFixed(2)} = <strong className="text-emerald-400 font-bold">Rs. {totalItemCost.toFixed(2)}</strong>
+                              <div className="text-[9px] text-slate-400 mt-0.5">
+                                (Calculated from Rs. {parseFloat(item.selling_price || 0).toFixed(2)} complete pack of {ppp})
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {/* Whole Packs Presets */}
+                            <div className="flex flex-wrap items-center gap-1 pt-0.5 border-t border-slate-800/80">
+                              {PACK_PRESETS.map((pk) => (
+                                <button
+                                  key={pk}
+                                  type="button"
+                                  onClick={() => setItemExactQty(itemKey, pk)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                    Math.abs(item.quantity - pk) < 0.01
+                                      ? 'bg-teal-500 text-slate-950 shadow-sm'
+                                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {pk} {pk === 1 ? 'Pack' : 'Packs'}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Precise Stepper & Pack Numeric Input */}
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] text-slate-400 font-semibold">Quantity (Packs):</span>
+                              <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantityDelta(itemKey, -1)}
+                                  className="p-1 text-slate-400 hover:text-white transition"
+                                  title="-1 pack"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={item.stock_quantity}
+                                  value={item.quantity}
+                                  onChange={(e) => setItemExactQty(itemKey, e.target.value)}
+                                  className="w-14 text-center bg-transparent font-mono text-xs font-bold text-teal-300 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantityDelta(itemKey, 1)}
+                                  className="p-1 text-slate-400 hover:text-white transition"
+                                  title="+1 pack"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })
