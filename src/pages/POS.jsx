@@ -290,8 +290,8 @@ export default function POS() {
     }
   };
 
-  // 4. Cart Operations (Supporting Both Complete Packs & Loose Units Dispensing)
-  const addToCart = (medicine, initialQty = 1, unitMode = 'pack') => {
+  // 4. Cart Operations (Simultaneous Complete Packs & Loose Units Dispensing)
+  const addToCart = (medicine, mode = 'pack') => {
     // 1. Expiration Safety Check
     if (medicine.expiry_date) {
       const expDate = new Date(medicine.expiry_date);
@@ -303,115 +303,85 @@ export default function POS() {
     }
 
     const ppp = Math.max(1, parseInt(medicine.pieces_per_pack) || 1);
-    const isPiece = unitMode === 'piece' || unitMode === 'loose';
     const totalLoose = Math.round(parseFloat(medicine.stock_quantity || 0) * ppp);
-    const totalPacks = parseFloat(medicine.stock_quantity || 0);
+    const totalPacks = Math.floor(parseFloat(medicine.stock_quantity || 0));
 
-    // 2. Stock Out Check
     if (totalLoose <= 0) {
       showToast(`Cannot add [${medicine.trade_name}] - Item is Out of Stock!`, 'error');
       return;
     }
 
+    const packPrice = parseFloat(medicine.selling_price || 0);
     const unitPrice = parseFloat(medicine.unit_selling_price) > 0
       ? parseFloat(medicine.unit_selling_price)
-      : parseFloat((parseFloat(medicine.selling_price || 0) / ppp).toFixed(2));
-
-    const qtyToAdd = Math.max(1, parseInt(initialQty) || 1);
-    const itemKey = `${medicine.id}_${isPiece ? 'piece' : 'pack'}`;
+      : parseFloat((packPrice / ppp).toFixed(2));
 
     setCart((prevCart) => {
-      const existingIdx = prevCart.findIndex((item) => item.cart_key === itemKey);
+      const existingIdx = prevCart.findIndex((item) => item.id === medicine.id);
 
       if (existingIdx >= 0) {
         const existing = prevCart[existingIdx];
-        const newQty = existing.quantity + qtyToAdd;
-        const maxLimit = isPiece ? totalLoose : Math.floor(totalPacks);
-        if (newQty > maxLimit) {
-          showToast(`Stock limit reached (${maxLimit} ${isPiece ? 'units' : 'packs'} available)`, 'error');
+        let nextPacks = existing.packs_qty || 0;
+        let nextUnits = existing.units_qty || 0;
+
+        if (mode === 'pack') {
+          nextPacks += 1;
+        } else {
+          nextUnits += 1;
+        }
+
+        const totalReq = (nextPacks * ppp) + nextUnits;
+        if (totalReq > totalLoose) {
+          showToast(`Stock limit reached (${totalLoose} total units available)`, 'error');
           return prevCart;
         }
+
         return prevCart.map((item, idx) =>
-          idx === existingIdx ? { ...item, quantity: newQty } : item
+          idx === existingIdx ? { ...item, packs_qty: nextPacks, units_qty: nextUnits } : item
         );
       }
+
+      const initialPacks = mode === 'pack' ? (totalPacks >= 1 ? 1 : 0) : 0;
+      const initialUnits = mode === 'pack' ? (totalPacks >= 1 ? 0 : 1) : 1;
 
       return [
         ...prevCart,
         {
           ...medicine,
-          cart_key: itemKey,
-          sale_unit: isPiece ? 'piece' : 'pack',
+          cart_key: `med_${medicine.id}`,
           pieces_per_pack: ppp,
+          packs_qty: initialPacks,
+          units_qty: initialUnits,
+          selling_price: packPrice,
           unit_selling_price: unitPrice,
           unit_cost_price: parseFloat(medicine.unit_cost_price) > 0
             ? parseFloat(medicine.unit_cost_price)
             : parseFloat((parseFloat(medicine.cost_price || 0) / ppp).toFixed(2)),
-          quantity: Math.min(qtyToAdd, isPiece ? totalLoose : Math.max(1, Math.floor(totalPacks))),
         }
       ];
     });
   };
 
-  const toggleItemUnit = (cartKey, targetUnit) => {
-    setCart((prevCart) =>
-      prevCart.map((item) => {
-        if (item.cart_key === cartKey) {
-          const isPiece = targetUnit === 'piece';
-          const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-          return {
-            ...item,
-            cart_key: `${item.id}_${isPiece ? 'piece' : 'pack'}`,
-            sale_unit: isPiece ? 'piece' : 'pack',
-            quantity: 1,
-          };
-        }
-        return item;
-      })
-    );
-  };
-
-  const setItemExactQty = (cartKey, exactQty) => {
-    const qty = parseInt(exactQty, 10);
-    if (isNaN(qty) || qty <= 0) return;
-
-    setCart((prevCart) =>
-      prevCart.map((item) => {
-        if (item.cart_key === cartKey) {
-          const isPiece = item.sale_unit === 'piece';
-          const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-          const maxLimit = isPiece
-            ? Math.round(parseFloat(item.stock_quantity || 0) * ppp)
-            : Math.floor(parseFloat(item.stock_quantity || 0));
-
-          if (qty > maxLimit) {
-            showToast(`Max stock is ${maxLimit} ${isPiece ? 'units' : 'packs'}`, 'error');
-            return { ...item, quantity: maxLimit };
-          }
-          return { ...item, quantity: qty };
-        }
-        return item;
-      })
-    );
-  };
-
-  const updateQuantityDelta = (cartKey, delta) => {
+  const updatePacksDelta = (medId, delta) => {
     setCart((prevCart) =>
       prevCart
         .map((item) => {
-          if (item.cart_key === cartKey) {
-            const isPiece = item.sale_unit === 'piece';
+          if (item.id === medId || item.cart_key === medId) {
             const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-            const maxLimit = isPiece
-              ? Math.round(parseFloat(item.stock_quantity || 0) * ppp)
-              : Math.floor(parseFloat(item.stock_quantity || 0));
+            const totalLoose = Math.round(parseFloat(item.stock_quantity || 0) * ppp);
+            const newPacks = Math.max(0, (item.packs_qty || 0) + delta);
+            const totalReq = (newPacks * ppp) + (item.units_qty || 0);
 
-            const newQty = item.quantity + delta;
-            if (newQty > maxLimit) {
-              showToast(`Stock limit reached (${maxLimit} ${isPiece ? 'units' : 'packs'} available)`, 'error');
+            if (totalReq > totalLoose) {
+              showToast(`Stock limit reached (${totalLoose} total units available)`, 'error');
               return item;
             }
-            return newQty > 0 ? { ...item, quantity: newQty } : null;
+
+            if (newPacks === 0 && (item.units_qty || 0) === 0) {
+              return null; // Remove from cart if both packs and units are 0
+            }
+
+            return { ...item, packs_qty: newPacks };
           }
           return item;
         })
@@ -419,8 +389,108 @@ export default function POS() {
     );
   };
 
-  const removeFromCart = (cartKey) => {
-    setCart((prevCart) => prevCart.filter((item) => item.cart_key !== cartKey));
+  const setPacksExact = (medId, val) => {
+    const p = Math.max(0, parseInt(val, 10) || 0);
+    setCart((prevCart) =>
+      prevCart
+        .map((item) => {
+          if (item.id === medId || item.cart_key === medId) {
+            const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+            const totalLoose = Math.round(parseFloat(item.stock_quantity || 0) * ppp);
+            const totalReq = (p * ppp) + (item.units_qty || 0);
+
+            if (totalReq > totalLoose) {
+              const maxP = Math.floor((totalLoose - (item.units_qty || 0)) / ppp);
+              showToast(`Max packs available is ${maxP}`, 'error');
+              return { ...item, packs_qty: Math.max(0, maxP) };
+            }
+
+            if (p === 0 && (item.units_qty || 0) === 0) {
+              return null;
+            }
+
+            return { ...item, packs_qty: p };
+          }
+          return item;
+        })
+        .filter(Boolean)
+    );
+  };
+
+  const updateUnitsDelta = (medId, delta) => {
+    setCart((prevCart) =>
+      prevCart
+        .map((item) => {
+          if (item.id === medId || item.cart_key === medId) {
+            const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+            const totalLoose = Math.round(parseFloat(item.stock_quantity || 0) * ppp);
+            const currentUnits = item.units_qty || 0;
+            const currentPacks = item.packs_qty || 0;
+
+            let nextUnits = currentUnits + delta;
+            let nextPacks = currentPacks;
+
+            // Increment roll over: if units reach ppp, increment pack and reset units
+            if (nextUnits >= ppp) {
+              nextPacks += Math.floor(nextUnits / ppp);
+              nextUnits = nextUnits % ppp;
+            } else if (nextUnits < 0) {
+              if (nextPacks > 0) {
+                nextPacks -= 1;
+                nextUnits = ppp - 1;
+              } else {
+                nextUnits = 0;
+              }
+            }
+
+            const totalReq = (nextPacks * ppp) + nextUnits;
+            if (totalReq > totalLoose) {
+              showToast(`Stock limit reached (${totalLoose} total units available)`, 'error');
+              return item;
+            }
+
+            if (nextPacks === 0 && nextUnits === 0) {
+              return null;
+            }
+
+            return { ...item, packs_qty: nextPacks, units_qty: nextUnits };
+          }
+          return item;
+        })
+        .filter(Boolean)
+    );
+  };
+
+  const setUnitsExact = (medId, val) => {
+    const u = Math.max(0, parseInt(val, 10) || 0);
+    setCart((prevCart) =>
+      prevCart
+        .map((item) => {
+          if (item.id === medId || item.cart_key === medId) {
+            const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
+            const totalLoose = Math.round(parseFloat(item.stock_quantity || 0) * ppp);
+            const totalReq = ((item.packs_qty || 0) * ppp) + u;
+
+            if (totalReq > totalLoose) {
+              const maxU = totalLoose - ((item.packs_qty || 0) * ppp);
+              showToast(`Max units available is ${maxU}`, 'error');
+              return { ...item, units_qty: Math.max(0, maxU) };
+            }
+
+            if ((item.packs_qty || 0) === 0 && u === 0) {
+              return null;
+            }
+
+            return { ...item, units_qty: u };
+          }
+          return item;
+        })
+        .filter(Boolean)
+    );
+  };
+
+  const removeFromCart = (medId) => {
+    setCart((prevCart) => prevCart.filter((item) => item.id !== medId && item.cart_key !== medId));
   };
 
   const clearCart = () => {
@@ -476,18 +546,24 @@ export default function POS() {
     }
   };
 
-  const getItemPrice = (item) => {
+  const getItemSubtotal = (item) => {
     const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-    if (item.sale_unit === 'piece' || item.sale_unit === 'loose') {
-      return parseFloat(item.unit_selling_price) > 0
-        ? parseFloat(item.unit_selling_price)
-        : parseFloat((parseFloat(item.selling_price || 0) / ppp).toFixed(2));
+    const packPrice = parseFloat(item.selling_price || 0);
+    const unitPrice = parseFloat(item.unit_selling_price) > 0
+      ? parseFloat(item.unit_selling_price)
+      : parseFloat((packPrice / ppp).toFixed(2));
+
+    if (ppp === 1) {
+      const q = parseFloat(item.packs_qty !== undefined ? item.packs_qty : (item.quantity || 1));
+      return q * packPrice;
     }
-    return parseFloat(item.selling_price || 0);
+    const packs = parseFloat(item.packs_qty || 0);
+    const units = parseFloat(item.units_qty || 0);
+    return (packs * packPrice) + (units * unitPrice);
   };
 
   // Totals Computation
-  const subtotal = cart.reduce((sum, item) => sum + getItemPrice(item) * item.quantity, 0);
+  const subtotal = cart.reduce((sum, item) => sum + getItemSubtotal(item), 0);
   const calculatedDiscount =
     discountType === 'percent'
       ? (subtotal * parseFloat(discount || 0)) / 100
@@ -505,16 +581,27 @@ export default function POS() {
       setCheckoutLoading(true);
       const itemsPayload = cart.map((item) => {
         const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-        const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
-        const unitPrice = getItemPrice(item);
+        const packPrice = parseFloat(item.selling_price || 0);
+        const unitPrice = parseFloat(item.unit_selling_price) > 0
+          ? parseFloat(item.unit_selling_price)
+          : parseFloat((packPrice / ppp).toFixed(2));
+
+        const packs = ppp > 1 ? parseFloat(item.packs_qty || 0) : parseFloat(item.packs_qty !== undefined ? item.packs_qty : (item.quantity || 1));
+        const units = ppp > 1 ? parseFloat(item.units_qty || 0) : 0;
+        const totalItemCost = getItemSubtotal(item);
+        const stockDeduction = ppp > 1 ? (packs + (units / ppp)) : packs;
 
         return {
           ...item,
-          sale_unit: isPiece ? 'piece' : 'pack',
+          sale_unit: ppp > 1 ? (packs > 0 && units > 0 ? 'mixed' : (packs > 0 ? 'pack' : 'piece')) : 'pack',
           pieces_per_pack: ppp,
-          unit_price: unitPrice,
-          unit_selling_price: isPiece ? unitPrice : parseFloat((unitPrice / ppp).toFixed(2)),
-          quantity: item.quantity,
+          packs_qty: packs,
+          units_qty: units,
+          quantity: stockDeduction,
+          unit_price: packs > 0 && units === 0 ? packPrice : unitPrice,
+          unit_selling_price: unitPrice,
+          selling_price: packPrice,
+          total_price: totalItemCost,
         };
       });
 
@@ -892,17 +979,22 @@ export default function POS() {
                   </div>
                 ) : (
                   cart.map((item) => {
-                    const itemKey = item.cart_key || `${item.id}_${item.sale_unit || 'pack'}`;
                     const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-                    const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
-                    const itemPrice = getItemPrice(item);
-                    const totalItemCost = itemPrice * item.quantity;
+                    const packPrice = parseFloat(item.selling_price || 0);
+                    const unitPrice = parseFloat(item.unit_selling_price) > 0
+                      ? parseFloat(item.unit_selling_price)
+                      : parseFloat((packPrice / ppp).toFixed(2));
+
+                    const packs = item.packs_qty !== undefined ? item.packs_qty : (item.sale_unit === 'piece' ? 0 : (item.quantity || 1));
+                    const units = item.units_qty !== undefined ? item.units_qty : (item.sale_unit === 'piece' ? (item.quantity || 1) : 0);
+                    const totalItemCost = getItemSubtotal(item);
                     const totalLooseAvail = Math.round(parseFloat(item.stock_quantity || 0) * ppp);
                     const totalPacksAvail = Math.floor(parseFloat(item.stock_quantity || 0));
+                    const totalUnitsSelected = ppp > 1 ? (packs * ppp + units) : packs;
 
                     return (
                       <div
-                        key={itemKey}
+                        key={item.id}
                         className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 space-y-2.5 shadow-md"
                       >
                         {/* Header: Name, Mode Badge, Available Stock & Delete */}
@@ -910,21 +1002,15 @@ export default function POS() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-xs text-white truncate">{item.trade_name}</span>
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase border ${
-                                isPiece
-                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                                  : 'bg-teal-500/20 text-teal-300 border-teal-500/40'
-                              }`}>
-                                {isPiece ? '💊 Loose Units' : '📦 Full Pack'}
-                              </span>
                               {ppp > 1 && (
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-teal-300 border border-slate-700">
                                   {ppp} {item.form || 'units'}/pk
                                 </span>
                               )}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                              Rate: <strong className="text-slate-200">Rs. {itemPrice.toFixed(2)}</strong> / {isPiece ? (item.form?.toLowerCase() || 'unit') : 'pack'}
+                              Pk: <strong className="text-slate-200">Rs. {packPrice.toFixed(2)}</strong>
+                              {ppp > 1 && <> • Unit: <strong className="text-teal-300">Rs. {unitPrice.toFixed(2)}</strong></>}
                               {' • '}Stock: <strong className="text-teal-300">{totalPacksAvail} Pk</strong> {ppp > 1 && `(${totalLooseAvail} units)`}
                             </div>
                           </div>
@@ -935,7 +1021,7 @@ export default function POS() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => removeFromCart(itemKey)}
+                              onClick={() => removeFromCart(item.id)}
                               className="text-[10px] text-rose-400 hover:text-rose-300 inline-flex items-center gap-0.5 mt-0.5"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -944,236 +1030,203 @@ export default function POS() {
                           </div>
                         </div>
 
-                        {/* Mode Switcher: Sell in Packs vs Sell Loose Units */}
-                        {ppp > 1 && (
-                          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 w-full">
-                            <button
-                              type="button"
-                              onClick={() => toggleItemUnit(itemKey, 'pack')}
-                              className={`flex-1 py-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                                !isPiece
-                                  ? 'bg-teal-500 text-slate-950 shadow-md'
-                                  : 'text-slate-400 hover:text-white'
-                              }`}
-                            >
-                              <span>📦 Sell in Packs (Rs. {parseFloat(item.selling_price || 0).toFixed(2)})</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleItemUnit(itemKey, 'piece')}
-                              className={`flex-1 py-1 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                                isPiece
-                                  ? 'bg-gradient-to-r from-sky-500 to-teal-400 text-slate-950 shadow-md'
-                                  : 'text-slate-400 hover:text-white'
-                              }`}
-                            >
-                              <span>💊 Sell Loose Units (Rs. {parseFloat(item.unit_selling_price || (item.selling_price / ppp)).toFixed(2)}/ea)</span>
-                            </button>
-                          </div>
-                        )}
+                        {/* Simultaneous Dual Dispensing: Complete Packs + Loose Units */}
+                        {ppp > 1 ? (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* 1. Complete Packs Section */}
+                              <div className="p-2.5 rounded-xl bg-slate-950/90 border border-teal-500/30 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-teal-300 flex items-center gap-1">
+                                    <span>📦 Packs:</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    Rs. {packPrice.toFixed(2)}/pk
+                                  </span>
+                                </div>
 
-                        {/* DISPENSING CONTROLS */}
-                        {isPiece ? (
-                          /* LOOSE UNITS DISPENSING (1 unit, 2 units, 6 units, up to packet max) */
-                          <div className="p-3 rounded-2xl bg-slate-950/90 border border-sky-500/40 space-y-2.5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                                <Pill className="w-3.5 h-3.5 text-sky-400" />
-                                Loose Units to Sell ({item.form || 'Capsules'}):
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                1 Pack = {ppp} units
-                              </span>
-                            </div>
+                                {/* Stepper for Packs */}
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePacksDelta(item.id, -1)}
+                                    disabled={packs <= 0}
+                                    className={`w-7 h-7 rounded-lg font-black flex items-center justify-center transition border ${
+                                      packs <= 0
+                                        ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                                        : 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700 active:scale-95'
+                                    }`}
+                                    title="Decrease 1 pack"
+                                  >
+                                    <Minus className="w-3.5 h-3.5" />
+                                  </button>
 
-                            {/* Stepper with Direct Input */}
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => updateQuantityDelta(itemKey, -1)}
-                                disabled={item.quantity <= 1}
-                                className={`w-9 h-9 rounded-xl font-extrabold flex items-center justify-center transition border ${
-                                  item.quantity <= 1
-                                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700 active:scale-95'
-                                }`}
-                                title="Decrease 1 unit"
-                              >
-                                <Minus className="w-4 h-4" />
-                              </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={totalPacksAvail}
+                                    value={packs}
+                                    onChange={(e) => setPacksExact(item.id, e.target.value)}
+                                    className="flex-1 py-1 px-1 text-center bg-slate-900 border border-teal-500/50 rounded-lg font-mono text-sm font-black text-teal-300 focus:outline-none"
+                                  />
 
-                              <div className="flex-1 relative">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={totalLooseAvail}
-                                  value={item.quantity}
-                                  onChange={(e) => setItemExactQty(itemKey, e.target.value)}
-                                  placeholder="e.g. 6"
-                                  className="w-full py-2 px-3 text-center bg-slate-900 border-2 border-sky-500/60 focus:border-sky-400 rounded-xl font-mono text-lg font-black text-sky-300 focus:outline-none shadow-inner"
-                                />
-                                <span className="absolute right-3 top-2.5 text-[10px] text-slate-500 font-semibold pointer-events-none uppercase tracking-wider">
-                                  {item.form === 'Capsule' ? 'Caps' : item.form === 'Tablet' ? 'Tabs' : 'Units'}
-                                </span>
-                              </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePacksDelta(item.id, 1)}
+                                    disabled={packs >= totalPacksAvail}
+                                    className={`w-7 h-7 rounded-lg font-black flex items-center justify-center transition border ${
+                                      packs >= totalPacksAvail
+                                        ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                                        : 'bg-teal-500 border-teal-400 text-slate-950 hover:bg-teal-400 active:scale-95'
+                                    }`}
+                                    title="Increase 1 pack"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
 
-                              <button
-                                type="button"
-                                onClick={() => updateQuantityDelta(itemKey, 1)}
-                                disabled={item.quantity >= totalLooseAvail}
-                                className={`w-9 h-9 rounded-xl font-extrabold flex items-center justify-center transition border ${
-                                  item.quantity >= totalLooseAvail
-                                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'bg-sky-500 border-sky-400 text-slate-950 hover:bg-sky-400 active:scale-95'
-                                }`}
-                                title="Increase 1 unit"
-                              >
-                                <Plus className="w-4 h-4" />
-                              </button>
-                            </div>
-
-                            {/* Dynamic Unit Presets per Medicine Pack Size */}
-                            <div className="space-y-1">
-                              <div className="text-[10px] text-slate-400 font-semibold flex items-center justify-between">
-                                <span>Quick Unit Presets:</span>
-                                {ppp > 1 && (
-                                  <span className="text-sky-400 text-[10px]">Max in 1 Pack: {ppp} units</span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {getDynamicUnitPresets(ppp, totalLooseAvail).map((preset) => {
-                                  const isFullPack = preset.val === ppp && ppp > 1;
-                                  return (
+                                {/* Quick Pack Presets */}
+                                <div className="flex items-center gap-1 pt-0.5">
+                                  {[0, 1, 2, 3, 5].filter((p) => p <= totalPacksAvail).map((p) => (
                                     <button
-                                      key={preset.val}
+                                      key={p}
                                       type="button"
-                                      onClick={() => setItemExactQty(itemKey, preset.val)}
-                                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                                        Math.abs(item.quantity - preset.val) < 0.01
-                                          ? 'bg-sky-500 text-slate-950 shadow-md ring-1 ring-sky-400'
-                                          : isFullPack
-                                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30'
-                                          : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-slate-700'
+                                      onClick={() => setPacksExact(item.id, p)}
+                                      className={`flex-1 py-0.5 rounded text-[10px] font-bold transition ${
+                                        packs === p
+                                          ? 'bg-teal-500 text-slate-950'
+                                          : 'bg-slate-800 text-slate-400 hover:text-white'
                                       }`}
                                     >
-                                      {preset.label}
+                                      {p} Pk
                                     </button>
-                                  );
-                                })}
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 2. Loose Units Section */}
+                              <div className="p-2.5 rounded-xl bg-slate-950/90 border border-sky-500/30 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-sky-300 flex items-center gap-1">
+                                    <Pill className="w-3 h-3 text-sky-400" />
+                                    <span>Loose Units:</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    Rs. {unitPrice.toFixed(2)}/ea
+                                  </span>
+                                </div>
+
+                                {/* Stepper for Units */}
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateUnitsDelta(item.id, -1)}
+                                    disabled={units <= 0 && packs <= 0}
+                                    className={`w-7 h-7 rounded-lg font-black flex items-center justify-center transition border ${
+                                      units <= 0 && packs <= 0
+                                        ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                                        : 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700 active:scale-95'
+                                    }`}
+                                    title="Decrement loose unit"
+                                  >
+                                    <Minus className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={totalLooseAvail}
+                                    value={units}
+                                    onChange={(e) => setUnitsExact(item.id, e.target.value)}
+                                    className="flex-1 py-1 px-1 text-center bg-slate-900 border border-sky-500/50 rounded-lg font-mono text-sm font-black text-sky-300 focus:outline-none"
+                                  />
+
+                                  <button
+                                    type="button"
+                                    onClick={() => updateUnitsDelta(item.id, 1)}
+                                    disabled={(packs * ppp + units) >= totalLooseAvail}
+                                    className={`w-7 h-7 rounded-lg font-black flex items-center justify-center transition border ${
+                                      (packs * ppp + units) >= totalLooseAvail
+                                        ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                                        : 'bg-sky-500 border-sky-400 text-slate-950 hover:bg-sky-400 active:scale-95'
+                                    }`}
+                                    title="Increment loose unit"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                {/* Quick Loose Units Presets (e.g. 0, 1, 2, half, max in 1 pack) */}
+                                <div className="flex items-center gap-1 pt-0.5">
+                                  {[0, 1, 2, Math.floor(ppp / 2), Math.min(ppp - 1, 6)].filter((v, i, a) => v >= 0 && a.indexOf(v) === i && v < ppp).map((u) => (
+                                    <button
+                                      key={u}
+                                      type="button"
+                                      onClick={() => setUnitsExact(item.id, u)}
+                                      className={`flex-1 py-0.5 rounded text-[10px] font-bold transition ${
+                                        units === u
+                                          ? 'bg-sky-500 text-slate-950'
+                                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                                      }`}
+                                    >
+                                      {u === 0 ? '0' : `+${u}`}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             </div>
 
-                            {/* Loose Unit Calculation Breakdown */}
-                            <div className="text-xs text-slate-200 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 font-mono flex flex-col gap-0.5">
+                            {/* Live Combined Formula Banner */}
+                            <div className="text-xs text-slate-200 bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 font-mono space-y-1">
                               <div className="flex items-center justify-between">
                                 <span>
-                                  💡 <strong className="text-white">{item.quantity} {item.form || 'units'}</strong> × Rs. {itemPrice.toFixed(2)}
+                                  💡 {packs > 0 && <span><strong>{packs} Pk</strong> (Rs. {(packs * packPrice).toFixed(2)})</span>}
+                                  {packs > 0 && units > 0 && <span> + </span>}
+                                  {units > 0 && <span><strong>{units} {item.form || 'units'}</strong> (Rs. {(units * unitPrice).toFixed(2)})</span>}
+                                  {packs === 0 && units === 0 && <span className="text-rose-400 font-semibold">0 selected</span>}
                                 </span>
                                 <span className="font-extrabold text-emerald-400 text-sm">
                                   = Rs. {totalItemCost.toFixed(2)}
                                 </span>
                               </div>
-                              {ppp > 1 && (
-                                <div className="text-[9px] text-slate-400 mt-0.5">
-                                  (Calculated from Rs. {parseFloat(item.selling_price || 0).toFixed(2)} complete pack of {ppp} = Rs. {itemPrice.toFixed(2)}/unit)
-                                </div>
-                              )}
+                              <div className="text-[10px] text-slate-400 flex items-center justify-between border-t border-slate-800/80 pt-1">
+                                <span>Total: <strong className="text-teal-300">{totalUnitsSelected} {item.form || 'capsules'}</strong> dispensed</span>
+                                <span>Deduction: <strong className="text-slate-200">{(packs + (units / ppp)).toFixed(2)} packs</strong></span>
+                              </div>
                             </div>
                           </div>
                         ) : (
-                          /* COMPLETE PACKS DISPENSING (1 Pack, 2 Packs, 3 Packs, etc.) */
-                          <div className="p-3 rounded-2xl bg-slate-950/90 border border-teal-500/40 space-y-2.5 shadow-sm">
+                          /* Single Item (e.g. Syrup, Drop where ppp === 1) */
+                          <div className="p-2.5 rounded-xl bg-slate-950/90 border border-teal-500/30 space-y-2">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                                <span>📦 Quantity to Sell (Packs):</span>
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                Stock: {totalPacksAvail} packs available
-                              </span>
+                              <span className="text-xs font-bold text-teal-300">Quantity to Sell:</span>
+                              <span className="text-[10px] text-slate-400 font-mono">Stock: {totalPacksAvail} available</span>
                             </div>
-
-                            {/* Stepper with Direct Input for Packs */}
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => updateQuantityDelta(itemKey, -1)}
-                                disabled={item.quantity <= 1}
-                                className={`w-9 h-9 rounded-xl font-extrabold flex items-center justify-center transition border ${
-                                  item.quantity <= 1
-                                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700 active:scale-95'
-                                }`}
-                                title="Decrease 1 pack"
+                                onClick={() => updatePacksDelta(item.id, -1)}
+                                disabled={packs <= 1}
+                                className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-white flex items-center justify-center"
                               >
                                 <Minus className="w-4 h-4" />
                               </button>
-
-                              <div className="flex-1 relative">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={totalPacksAvail}
-                                  value={item.quantity}
-                                  onChange={(e) => setItemExactQty(itemKey, e.target.value)}
-                                  placeholder="e.g. 1"
-                                  className="w-full py-2 px-3 text-center bg-slate-900 border-2 border-teal-500/60 focus:border-teal-400 rounded-xl font-mono text-lg font-black text-teal-300 focus:outline-none shadow-inner"
-                                />
-                                <span className="absolute right-3 top-2.5 text-[10px] text-slate-500 font-semibold pointer-events-none uppercase tracking-wider">
-                                  {item.quantity === 1 ? 'Pack' : 'Packs'}
-                                </span>
-                              </div>
-
+                              <input
+                                type="number"
+                                min="1"
+                                max={totalPacksAvail}
+                                value={packs}
+                                onChange={(e) => setPacksExact(item.id, e.target.value)}
+                                className="flex-1 py-1 px-2 text-center bg-slate-900 border border-teal-500/50 rounded-lg font-mono text-base font-bold text-teal-300"
+                              />
                               <button
                                 type="button"
-                                onClick={() => updateQuantityDelta(itemKey, 1)}
-                                disabled={item.quantity >= totalPacksAvail}
-                                className={`w-9 h-9 rounded-xl font-extrabold flex items-center justify-center transition border ${
-                                  item.quantity >= totalPacksAvail
-                                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                    : 'bg-teal-500 border-teal-400 text-slate-950 hover:bg-teal-400 active:scale-95'
-                                }`}
-                                title="Increase 1 pack"
+                                onClick={() => updatePacksDelta(item.id, 1)}
+                                disabled={packs >= totalPacksAvail}
+                                className="w-8 h-8 rounded-lg bg-teal-500 border border-teal-400 text-slate-950 flex items-center justify-center font-bold"
                               >
                                 <Plus className="w-4 h-4" />
                               </button>
-                            </div>
-
-                            {/* Quick Pack Presets (1 Pack, 2 Packs, 3 Packs, 5 Packs, 10 Packs) */}
-                            <div className="space-y-1">
-                              <span className="text-[10px] text-slate-400 font-semibold">Quick Pack Presets:</span>
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {PACK_PRESETS.filter((pk) => pk <= totalPacksAvail).map((pk) => (
-                                  <button
-                                    key={pk}
-                                    type="button"
-                                    onClick={() => setItemExactQty(itemKey, pk)}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                                      Math.abs(item.quantity - pk) < 0.01
-                                        ? 'bg-teal-500 text-slate-950 shadow-md ring-1 ring-teal-400'
-                                        : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                                    }`}
-                                  >
-                                    {pk} {pk === 1 ? 'Pack' : 'Packs'}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Pack Calculation Breakdown */}
-                            <div className="text-xs text-slate-200 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 font-mono flex flex-col gap-0.5">
-                              <div className="flex items-center justify-between">
-                                <span>
-                                  💡 <strong className="text-white">{item.quantity} {item.quantity === 1 ? 'Pack' : 'Packs'}</strong> × Rs. {itemPrice.toFixed(2)}
-                                </span>
-                                <span className="font-extrabold text-emerald-400 text-sm">
-                                  = Rs. {totalItemCost.toFixed(2)}
-                                </span>
-                              </div>
-                              {ppp > 1 && (
-                                <div className="text-[9px] text-slate-400 mt-0.5">
-                                  (Total {item.quantity * ppp} {item.form || 'units'} inside {item.quantity} {item.quantity === 1 ? 'pack' : 'packs'})
-                                </div>
-                              )}
                             </div>
                           </div>
                         )}

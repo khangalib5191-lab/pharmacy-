@@ -115,10 +115,22 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
               </thead>
               <tbody className="divide-y divide-slate-800/50 print-border-dark text-slate-200 print-text-dark">
                 {receipt.items?.map((item, idx) => {
+                  const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
                   const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
-                  const unitLabel = isPiece
-                    ? `${item.quantity} ${item.form || 'Capsule'}${item.quantity > 1 ? 's' : ''}`
-                    : `${formatQty(item.quantity)} Pk`;
+                  const isMixed = item.sale_unit === 'mixed' || (item.packs_qty > 0 && item.units_qty > 0);
+
+                  let unitLabel = '';
+                  if (isMixed) {
+                    const pk = item.packs_qty !== undefined ? item.packs_qty : Math.floor(parseFloat(item.quantity || 0));
+                    const un = item.units_qty !== undefined ? item.units_qty : Math.round((parseFloat(item.quantity || 0) - pk) * ppp);
+                    unitLabel = `${pk} Pk + ${un} ${item.form || 'Unit'}${un > 1 ? 's' : ''}`;
+                  } else if (isPiece) {
+                    const un = item.units_qty !== undefined ? item.units_qty : item.quantity;
+                    unitLabel = `${un} ${item.form || 'Capsule'}${parseFloat(un) > 1 ? 's' : ''}`;
+                  } else {
+                    const pk = item.packs_qty !== undefined ? item.packs_qty : item.quantity;
+                    unitLabel = `${formatQty(pk)} Pk`;
+                  }
 
                   return (
                     <tr key={idx} className="py-1.5">
@@ -126,14 +138,18 @@ export default function ReceiptModal({ receipt, onClose, onNewSale }) {
                         <div className="font-bold text-white print-text-dark flex items-center gap-1">
                           <span>{item.trade_name}</span>
                           {isPiece && (
-                            <span className="text-[9px] px-1 py-0.2 rounded bg-teal-500/20 text-teal-300 font-bold border border-teal-500/40 print-text-dark">
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/40 print-text-dark">
                               Loose
+                            </span>
+                          )}
+                          {isMixed && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-teal-500/20 text-teal-300 font-bold border border-teal-500/40 print-text-dark">
+                              Pack+Loose
                             </span>
                           )}
                         </div>
                         <div className="text-[10px] text-slate-400 print-text-dark">
                           {item.dosage ? `${item.dosage} ` : ''}{item.generic_name ? `• ${item.generic_name}` : ''}
-                          {isPiece && ` • Loose Rate: Rs. ${parseFloat(item.unit_price).toFixed(2)}/unit`}
                         </div>
                       </td>
                       <td className="py-1.5 text-center font-mono font-bold print-text-dark text-teal-300 text-[11px]">

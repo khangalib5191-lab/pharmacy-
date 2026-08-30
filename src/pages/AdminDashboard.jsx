@@ -2417,7 +2417,12 @@ export default function AdminDashboard() {
                     step="0.01"
                     required
                     value={formData.cost_price}
-                    onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
+                    onChange={(e) => {
+                      const cp = e.target.value;
+                      const ppp = Math.max(1, parseInt(formData.pieces_per_pack) || 1);
+                      const autoUcp = cp ? (parseFloat(cp) / ppp).toFixed(2) : '';
+                      setFormData({ ...formData, cost_price: cp, unit_cost_price: autoUcp });
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
                   />
                 </div>
@@ -2428,7 +2433,12 @@ export default function AdminDashboard() {
                     step="0.01"
                     required
                     value={formData.selling_price}
-                    onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                    onChange={(e) => {
+                      const sp = e.target.value;
+                      const ppp = Math.max(1, parseInt(formData.pieces_per_pack) || 1);
+                      const autoUsp = sp ? (parseFloat(sp) / ppp).toFixed(2) : '';
+                      setFormData({ ...formData, selling_price: sp, unit_selling_price: autoUsp });
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
                   />
                 </div>
@@ -2451,7 +2461,7 @@ export default function AdminDashboard() {
                     <Pill className="w-3.5 h-3.5" />
                     Packaging Unit & Loose Dispensing Configuration
                   </span>
-                  <span className="text-[10px] text-slate-400">Auto-Calculates Per-Capsule Rates</span>
+                  <span className="text-[10px] text-teal-400 font-semibold">✨ Auto-Calculates 1 Unit Price On Its Own</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
@@ -2465,10 +2475,21 @@ export default function AdminDashboard() {
                       required
                       placeholder="e.g. 30"
                       value={formData.pieces_per_pack || ''}
-                      onChange={(e) => setFormData({ ...formData, pieces_per_pack: e.target.value })}
+                      onChange={(e) => {
+                        const pppVal = e.target.value;
+                        const ppp = Math.max(1, parseInt(pppVal) || 1);
+                        const autoUsp = formData.selling_price ? (parseFloat(formData.selling_price) / ppp).toFixed(2) : '';
+                        const autoUcp = formData.cost_price ? (parseFloat(formData.cost_price) / ppp).toFixed(2) : '';
+                        setFormData({
+                          ...formData,
+                          pieces_per_pack: pppVal,
+                          unit_selling_price: autoUsp,
+                          unit_cost_price: autoUcp,
+                        });
+                      }}
                       className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-teal-500/40 text-xs text-white focus:outline-none focus:border-teal-400 font-mono font-bold"
                     />
-                    <span className="text-[9px] text-slate-400 mt-0.5 block">e.g. 30 caps per packet</span>
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">e.g. 10 or 30 caps per packet</span>
                   </div>
 
                   <div>
@@ -2478,12 +2499,14 @@ export default function AdminDashboard() {
                     <input
                       type="number"
                       step="0.01"
-                      placeholder={formData.selling_price && formData.pieces_per_pack ? (parseFloat(formData.selling_price) / Math.max(1, parseInt(formData.pieces_per_pack))).toFixed(2) : '0.00'}
+                      placeholder="Auto-calculated"
                       value={formData.unit_selling_price || ''}
                       onChange={(e) => setFormData({ ...formData, unit_selling_price: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-teal-300 focus:outline-none focus:border-teal-500 font-mono font-bold"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-teal-500/50 text-xs text-teal-300 focus:outline-none focus:border-teal-400 font-mono font-bold"
                     />
-                    <span className="text-[9px] text-teal-400/80 mt-0.5 block">Auto: Rs. {(parseFloat(formData.selling_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1))).toFixed(2)} /unit</span>
+                    <span className="text-[9px] text-teal-400 mt-0.5 block font-semibold">
+                      Auto: Rs. {(parseFloat(formData.selling_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1))).toFixed(2)} /unit
+                    </span>
                   </div>
 
                   <div>
@@ -2493,16 +2516,18 @@ export default function AdminDashboard() {
                     <input
                       type="number"
                       step="0.01"
-                      placeholder={formData.cost_price && formData.pieces_per_pack ? (parseFloat(formData.cost_price) / Math.max(1, parseInt(formData.pieces_per_pack))).toFixed(2) : '0.00'}
+                      placeholder="Auto-calculated"
                       value={formData.unit_cost_price || ''}
                       onChange={(e) => setFormData({ ...formData, unit_cost_price: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-300 focus:outline-none focus:border-teal-500 font-mono"
                     />
-                    <span className="text-[9px] text-slate-400 mt-0.5 block">Auto: Rs. {(parseFloat(formData.cost_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1))).toFixed(2)} /unit</span>
+                    <span className="text-[9px] text-slate-400 mt-0.5 block">
+                      Auto: Rs. {(parseFloat(formData.cost_price || 0) / Math.max(1, parseInt(formData.pieces_per_pack || 1))).toFixed(2)} /unit
+                    </span>
                   </div>
                 </div>
 
-                <div className="text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between font-mono">
+                <div className="text-[11px] text-slate-300 bg-slate-950/70 p-2.5 rounded-xl border border-teal-500/30 flex items-center justify-between font-mono">
                   <span>
                     💡 <strong className="text-white">{formData.pieces_per_pack || 1} {formData.form || 'units'}</strong> in 1 Pack @ <strong className="text-emerald-400">Rs. {parseFloat(formData.selling_price || 0).toFixed(2)}</strong>
                   </span>

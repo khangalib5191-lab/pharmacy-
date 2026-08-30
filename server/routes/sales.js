@@ -53,27 +53,29 @@ router.post('/', verifyToken, async (req, res) => {
     let subtotal = 0;
     let cost_total = 0;
     for (const item of items) {
-      const qty = parseFloat(item.quantity);
       const ppp = Math.max(1, parseInt(item.pieces_per_pack) || 1);
-      const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+      const packsQty = parseFloat(item.packs_qty !== undefined ? item.packs_qty : (item.sale_unit === 'pack' ? item.quantity : 0)) || 0;
+      const unitsQty = parseFloat(item.units_qty !== undefined ? item.units_qty : (item.sale_unit === 'piece' ? item.quantity : 0)) || 0;
 
-      let unitPrice = 0;
-      let costPrice = 0;
+      const packPrice = parseFloat(item.selling_price || item.unit_price || 0);
+      const unitPrice = parseFloat(item.unit_selling_price) > 0
+        ? parseFloat(item.unit_selling_price)
+        : parseFloat((packPrice / ppp).toFixed(2));
 
-      if (isPiece) {
-        unitPrice = parseFloat(item.unit_selling_price) > 0
-          ? parseFloat(item.unit_selling_price)
-          : parseFloat((parseFloat(item.selling_price || 0) / ppp).toFixed(2));
-        costPrice = parseFloat(item.unit_cost_price) > 0
-          ? parseFloat(item.unit_cost_price)
-          : parseFloat((parseFloat(item.cost_price || 0) / ppp).toFixed(2));
+      const packCost = parseFloat(item.cost_price || 0);
+      const unitCost = parseFloat(item.unit_cost_price) > 0
+        ? parseFloat(item.unit_cost_price)
+        : parseFloat((packCost / ppp).toFixed(2));
+
+      if (ppp > 1 && (item.packs_qty !== undefined || item.units_qty !== undefined)) {
+        subtotal += (packsQty * packPrice) + (unitsQty * unitPrice);
+        cost_total += (packsQty * packCost) + (unitsQty * unitCost);
       } else {
-        unitPrice = parseFloat(item.selling_price || item.unit_price || 0);
-        costPrice = parseFloat(item.cost_price || 0);
+        const qty = parseFloat(item.quantity || 1);
+        const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+        subtotal += (isPiece ? unitPrice : packPrice) * qty;
+        cost_total += (isPiece ? unitCost : packCost) * qty;
       }
-
-      subtotal += unitPrice * qty;
-      cost_total += costPrice * qty;
     }
 
     const totalDiscount = parseFloat(discount || 0);
@@ -94,37 +96,58 @@ router.post('/', verifyToken, async (req, res) => {
 
       const processedItems = [];
       for (const item of items) {
-        const qty = parseFloat(item.quantity);
         const med = await get('SELECT cost_price, selling_price, unit_cost_price, unit_selling_price, stock_quantity, pieces_per_pack FROM medicines WHERE id = ?', [item.id]);
         const ppp = Math.max(1, parseInt(item.pieces_per_pack || med.pieces_per_pack) || 1);
-        const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+        const packsQty = parseFloat(item.packs_qty !== undefined ? item.packs_qty : (item.sale_unit === 'pack' ? item.quantity : 0)) || 0;
+        const unitsQty = parseFloat(item.units_qty !== undefined ? item.units_qty : (item.sale_unit === 'piece' ? item.quantity : 0)) || 0;
 
-        let unitPrice = 0;
-        let unitCost = 0;
+        const packPrice = parseFloat(med.selling_price || item.selling_price || 0);
+        const packCost = parseFloat(med.cost_price || item.cost_price || 0);
+        const looseUnitPrice = parseFloat(item.unit_selling_price || med.unit_selling_price) > 0
+          ? parseFloat(item.unit_selling_price || med.unit_selling_price)
+          : parseFloat((packPrice / ppp).toFixed(2));
+        const looseUnitCost = parseFloat(item.unit_cost_price || med.unit_cost_price) > 0
+          ? parseFloat(item.unit_cost_price || med.unit_cost_price)
+          : parseFloat((packCost / ppp).toFixed(2));
+
+        let itemTotal = 0;
         let stockDeductionPacks = 0;
+        let unitCostSnapshot = 0;
+        let unitPriceSnapshot = 0;
+        let recordedQty = 0;
+        let recordedUnit = 'pack';
 
-        if (isPiece) {
-          unitPrice = parseFloat(item.unit_selling_price) > 0
-            ? parseFloat(item.unit_selling_price)
-            : parseFloat((parseFloat(med.selling_price || item.selling_price || 0) / ppp).toFixed(2));
-          unitCost = parseFloat(item.unit_cost_price) > 0
-            ? parseFloat(item.unit_cost_price)
-            : parseFloat((parseFloat(med.cost_price || item.cost_price || 0) / ppp).toFixed(2));
-          stockDeductionPacks = qty / ppp;
+        if (ppp > 1 && (item.packs_qty !== undefined || item.units_qty !== undefined)) {
+          itemTotal = (packsQty * packPrice) + (unitsQty * looseUnitPrice);
+          stockDeductionPacks = packsQty + (unitsQty / ppp);
+          unitCostSnapshot = (packsQty * packCost) + (unitsQty * looseUnitCost);
+          unitPriceSnapshot = packsQty > 0 && unitsQty === 0 ? packPrice : looseUnitPrice;
+          recordedQty = stockDeductionPacks;
+          recordedUnit = packsQty > 0 && unitsQty > 0 ? 'mixed' : (packsQty > 0 ? 'pack' : 'piece');
         } else {
-          unitPrice = parseFloat(item.selling_price || item.unit_price || med.selling_price || 0);
-          unitCost = parseFloat(item.cost_price || med.cost_price || 0);
-          stockDeductionPacks = qty;
+          const qty = parseFloat(item.quantity || 1);
+          const isPiece = item.sale_unit === 'piece' || item.sale_unit === 'loose';
+          if (isPiece) {
+            unitPriceSnapshot = looseUnitPrice;
+            unitCostSnapshot = looseUnitCost;
+            stockDeductionPacks = qty / ppp;
+            recordedUnit = 'piece';
+          } else {
+            unitPriceSnapshot = packPrice;
+            unitCostSnapshot = packCost;
+            stockDeductionPacks = qty;
+            recordedUnit = 'pack';
+          }
+          recordedQty = qty;
+          itemTotal = unitPriceSnapshot * qty;
         }
-
-        const itemTotal = unitPrice * qty;
 
         // 2. Insert sale item with sale_unit, pieces_per_pack, cost snapshot
         await run(
           `INSERT INTO sale_items (sale_id, medicine_id, trade_name, dosage, sale_unit, pieces_per_pack, quantity, unit_price, cost_price, discount, total_price)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [sale_id, item.id, item.trade_name, item.dosage || null, isPiece ? 'piece' : 'pack', ppp, qty,
-           unitPrice, unitCost, parseFloat(item.discount || 0), itemTotal]
+          [sale_id, item.id, item.trade_name, item.dosage || null, recordedUnit, ppp, recordedQty,
+           unitPriceSnapshot, unitCostSnapshot, parseFloat(item.discount || 0), itemTotal]
         );
 
         // 3. Deduct stock in packs with high precision
@@ -136,7 +159,7 @@ router.post('/', verifyToken, async (req, res) => {
         await run(
           `INSERT INTO inventory_movements (medicine_id, movement_type, quantity_out, stock_before, stock_after, reference_type, reference_id, reference_number, unit_cost, created_by)
            VALUES (?, 'sale', ?, ?, ?, 'sale', ?, ?, ?, ?)`,
-          [item.id, stockDeductionPacks, stockBefore, stockAfter, sale_id, receipt_number, unitCost, req.user.id]
+          [item.id, stockDeductionPacks, stockBefore, stockAfter, sale_id, receipt_number, unitCostSnapshot, req.user.id]
         );
 
         processedItems.push({
@@ -144,10 +167,12 @@ router.post('/', verifyToken, async (req, res) => {
           dosage: item.dosage,
           generic_name: item.generic_name,
           form: item.form,
-          sale_unit: isPiece ? 'piece' : 'pack',
+          sale_unit: recordedUnit,
           pieces_per_pack: ppp,
-          quantity: qty,
-          unit_price: unitPrice,
+          packs_qty: packsQty,
+          units_qty: unitsQty,
+          quantity: recordedQty,
+          unit_price: unitPriceSnapshot,
           total_price: itemTotal
         });
       }
